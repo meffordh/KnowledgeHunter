@@ -13,9 +13,8 @@ export default function ResearchHistoryPage() {
     queryKey: ["/api/research/history"],
     enabled: !!user,
     staleTime: 1000 * 60, // Re-fetch after 1 minute
-    onSuccess: (data) => {
-      console.log('Research history fetched successfully:', data?.length, 'reports');
-    },
+    retry: 3,
+    retryDelay: 1000,
     onError: (error) => {
       console.error('Error fetching research history:', error);
     },
@@ -47,37 +46,38 @@ export default function ResearchHistoryPage() {
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Research History</h1>
       <div className="grid gap-4">
-        {reports?.map((report) => (
-          <Card key={report.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="text-lg font-semibold">{report.query}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => downloadReport(report)}
-                  title="Download Report"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {format(new Date(report.createdAt || ''), 'PPpp')}
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="prose prose-sm max-w-none">
-                {report.report.slice(0, 200)}...
-              </div>
-              {report.visitedUrls && report.visitedUrls.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-medium">Sources: {report.visitedUrls.length}</p>
+        {reports && reports.length > 0 ? (
+          reports.map((report) => (
+            <Card key={report.id}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="text-lg font-semibold">{report.query}</span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => downloadReport(report)}
+                    title="Download Report"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {format(new Date(report.createdAt || ''), 'PPpp')}
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-sm max-w-none">
+                  {report.report.slice(0, 200)}...
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {(!reports || reports.length === 0) && (
+                {report.visitedUrls && report.visitedUrls.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium">Sources: {report.visitedUrls.length}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        ) : (
           <p className="text-center text-muted-foreground">
             No research reports found. Start a new research to see it here!
           </p>
