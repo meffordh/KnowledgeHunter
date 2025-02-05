@@ -7,15 +7,21 @@ import { ResearchProvider } from "@/hooks/use-research";
 import { ProtectedRoute } from "@/lib/protected-route";
 import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
+import ResearchHistoryPage from "@/pages/research-history";
 import NotFound from "@/pages/not-found";
+import Navbar from "@/components/navbar";
 
 function Router() {
   return (
-    <Switch>
-      <ProtectedRoute path="/" component={HomePage} />
-      <Route path="/auth" component={AuthPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <div>
+      <Navbar />
+      <Switch>
+        <ProtectedRoute path="/" component={HomePage} />
+        <ProtectedRoute path="/history" component={ResearchHistoryPage} />
+        <Route path="/auth" component={AuthPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </div>
   );
 }
 

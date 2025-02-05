@@ -1,11 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from 'ws';
-import { setupAuth } from './auth.js';  // Fix import path
+import { setupAuth } from './auth.js';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
 import { storage } from './storage';
-import { parse as parseUrl } from 'url';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -25,6 +24,21 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Error generating clarifying questions:', error);
       res.status(500).json({ error: 'Failed to generate clarifying questions' });
+    }
+  });
+
+  // Add new endpoint to fetch user's research history
+  app.get('/api/research/history', async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    try {
+      const reports = await storage.getUserReports(req.user.id);
+      res.json(reports);
+    } catch (error) {
+      console.error('Error fetching research history:', error);
+      res.status(500).json({ error: 'Failed to fetch research history' });
     }
   });
 
