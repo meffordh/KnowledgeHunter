@@ -37,7 +37,7 @@ export default function AuthPage() {
   const loginForm = useForm<InsertUser>({
     resolver: zodResolver(insertUserSchema),
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
     },
   });
@@ -45,16 +45,18 @@ export default function AuthPage() {
   const registerForm = useForm<InsertUser>({
     resolver: zodResolver(insertUserSchema),
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
     },
   });
 
   const onLogin = (data: InsertUser) => {
+    console.log('Attempting login with:', { email: data.email });
     loginMutation.mutate(data);
   };
 
   const onRegister = (data: InsertUser) => {
+    console.log('Attempting registration with:', { email: data.email });
     registerMutation.mutate(data);
   };
 
@@ -83,12 +85,16 @@ export default function AuthPage() {
                   >
                     <FormField
                       control={loginForm.control}
-                      name="username"
+                      name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Username</FormLabel>
+                          <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input placeholder="Enter username" {...field} />
+                            <Input 
+                              type="email"
+                              placeholder="Enter your email"
+                              {...field} 
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -134,12 +140,16 @@ export default function AuthPage() {
                   >
                     <FormField
                       control={registerForm.control}
-                      name="username"
+                      name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Username</FormLabel>
+                          <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input placeholder="Choose username" {...field} />
+                            <Input 
+                              type="email"
+                              placeholder="Enter your email" 
+                              {...field} 
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
