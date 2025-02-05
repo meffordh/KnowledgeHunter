@@ -22,75 +22,85 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       socket.close();
     }
 
-    // Get the current host from the window location
-    const host = window.location.host;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${host}/ws`;
-    console.log('Connecting to WebSocket URL:', wsUrl);
+    try {
+      // Get the current host and construct WebSocket URL with explicit port 5000
+      const host = window.location.hostname;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${host}:5000/ws`;
+      console.log('Connecting to WebSocket URL:', wsUrl);
 
-    const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-      setIsResearching(true);
-      ws.send(JSON.stringify(research));
-    };
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+        setIsResearching(true);
+        ws.send(JSON.stringify(research));
+      };
 
-    ws.onmessage = (event) => {
-      try {
-        const progress: ResearchProgress = JSON.parse(event.data);
-        setProgress(progress);
+      ws.onmessage = (event) => {
+        try {
+          const progress: ResearchProgress = JSON.parse(event.data);
+          setProgress(progress);
 
-        if (progress.status === 'ERROR') {
+          if (progress.status === 'ERROR') {
+            toast({
+              title: 'Research Error',
+              description: progress.error || 'An error occurred during research',
+              variant: 'destructive',
+            });
+            setIsResearching(false);
+            ws.close();
+          }
+
+          if (progress.status === 'COMPLETED') {
+            toast({
+              title: 'Research Complete',
+              description: 'Your research has been completed successfully',
+            });
+            setIsResearching(false);
+            ws.close();
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
           toast({
-            title: 'Research Error',
-            description: progress.error || 'An error occurred during research',
+            title: 'Error',
+            description: 'Failed to process research update',
             variant: 'destructive',
           });
-          setIsResearching(false);
-          ws.close();
         }
+      };
 
-        if (progress.status === 'COMPLETED') {
-          toast({
-            title: 'Research Complete',
-            description: 'Your research has been completed successfully',
-          });
-          setIsResearching(false);
-          ws.close();
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
         toast({
-          title: 'Error',
-          description: 'Failed to process research update',
-          variant: 'destructive',
-        });
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      toast({
-        title: 'Connection Error',
-        description: 'Failed to connect to research service',
-        variant: 'destructive',
-      });
-      setIsResearching(false);
-    };
-
-    ws.onclose = () => {
-      if (isResearching) {
-        toast({
-          title: 'Connection Lost',
-          description: 'Lost connection to research service',
+          title: 'Connection Error',
+          description: 'Failed to connect to research service',
           variant: 'destructive',
         });
         setIsResearching(false);
-      }
-    };
+      };
 
-    setSocket(ws);
+      ws.onclose = () => {
+        if (isResearching) {
+          toast({
+            title: 'Connection Lost',
+            description: 'Lost connection to research service',
+            variant: 'destructive',
+          });
+          setIsResearching(false);
+        }
+      };
+
+      setSocket(ws);
+    } catch (error) {
+      console.error('Error setting up WebSocket:', error);
+      toast({
+        title: 'Connection Error',
+        description: 'Failed to setup WebSocket connection',
+        variant: 'destructive',
+      });
+      setIsResearching(false);
+    }
   }, [toast, socket, isResearching]);
 
   return (
