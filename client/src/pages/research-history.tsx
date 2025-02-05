@@ -12,7 +12,8 @@ export default function ResearchHistoryPage() {
   const { data: reports, isLoading } = useQuery<ResearchReport[]>({
     queryKey: ["/api/research/history"],
     enabled: !!user,
-    staleTime: 1000 * 60, // Re-fetch after 1 minute
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache the data
     retry: 3,
     retryDelay: 1000,
     onError: (error) => {

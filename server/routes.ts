@@ -90,15 +90,25 @@ export function registerRoutes(app: Express): Server {
         await handleResearch(research, ws, async (report, visitedUrls) => {
           if (report) {
             try {
-              await storage.createResearchReport({
+              console.log('Attempting to save research report for user:', user.id, 'query:', research.query);
+              const savedReport = await storage.createResearchReport({
                 userId: user.id,
                 query: research.query,
                 report,
                 visitedUrls
               });
-              console.log('Research report saved successfully for user:', user.id);
+              console.log('Research report saved successfully:', savedReport.id);
             } catch (error) {
               console.error('Error saving research report:', error);
+              // Send error to client
+              ws.send(JSON.stringify({
+                status: 'ERROR',
+                error: 'Failed to save research report',
+                learnings: [],
+                progress: 0,
+                totalProgress: 0,
+                visitedUrls: []
+              }));
             }
           }
         });
