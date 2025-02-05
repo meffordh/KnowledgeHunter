@@ -45,14 +45,17 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
 
   passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.password))) {
-        return done(null, false);
-      } else {
-        return done(null, user);
+    new LocalStrategy(
+      { usernameField: 'email' },
+      async (email, password, done) => {
+        const user = await storage.getUserByEmail(email);
+        if (!user || !(await comparePasswords(password, user.password))) {
+          return done(null, false);
+        } else {
+          return done(null, user);
+        }
       }
-    }),
+    )
   );
 
   passport.serializeUser((user, done) => done(null, user.id));
@@ -62,9 +65,9 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByUsername(req.body.username);
+    const existingUser = await storage.getUserByEmail(req.body.email);
     if (existingUser) {
-      return res.status(400).send("Username already exists");
+      return res.status(400).send("Email already registered");
     }
 
     const user = await storage.createUser({
@@ -92,5 +95,27 @@ export function setupAuth(app: Express) {
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     res.json(req.user);
+  });
+
+  // Add endpoints for research reports
+  app.get("/api/reports", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const reports = await storage.getUserReports(req.user.id);
+    res.json(reports);
+  });
+
+  // Add middleware to check research limit
+  app.use("/api/research", async (req, res, next) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    const count = await storage.getUserResearchCount(req.user.id);
+    if (count >= 100) {
+      return res.status(403).json({ 
+        error: "Research limit reached", 
+        message: "You have reached the maximum limit of 100 research queries."
+      });
+    }
+
+    next();
   });
 }

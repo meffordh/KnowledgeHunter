@@ -1,45 +1,74 @@
-import { users, type User, type InsertUser } from "@shared/schema";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import { users, researchReports, type User, type InsertUser, type ResearchReport, type InsertResearchReport } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
-const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  incrementResearchCount(userId: number): Promise<void>;
+  getUserResearchCount(userId: number): Promise<number>;
+  createResearchReport(report: InsertResearchReport): Promise<ResearchReport>;
+  getUserReports(userId: number): Promise<ResearchReport[]>;
   sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  currentId: number;
+export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.currentId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true,
     });
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async incrementResearchCount(userId: number): Promise<void> {
+    await db.update(users)
+      .set({ researchCount: db.raw('research_count + 1') })
+      .where(eq(users.id, userId));
+  }
+
+  async getUserResearchCount(userId: number): Promise<number> {
+    const [user] = await db.select({ count: users.researchCount })
+      .from(users)
+      .where(eq(users.id, userId));
+    return user?.count || 0;
+  }
+
+  async createResearchReport(report: InsertResearchReport): Promise<ResearchReport> {
+    const [newReport] = await db.insert(researchReports)
+      .values(report)
+      .returning();
+    return newReport;
+  }
+
+  async getUserReports(userId: number): Promise<ResearchReport[]> {
+    return await db.select()
+      .from(researchReports)
+      .where(eq(researchReports.userId, userId))
+      .orderBy(desc(researchReports.createdAt));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

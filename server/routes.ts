@@ -4,6 +4,8 @@ import { WebSocketServer } from 'ws';
 import { setupAuth } from './auth';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
+import { storage } from './storage';
+import { parse as parseUrl } from 'url';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -26,12 +28,57 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Extract session from the upgrade request
+    const sessionId = parseUrl(req.url!, true).query.sessionId;
+
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
         const research = researchSchema.parse(data);
-        await handleResearch(research, ws);
+
+        // Get user from session
+        const user = req.user;
+        if (!user) {
+          ws.send(JSON.stringify({
+            status: 'ERROR',
+            error: 'Authentication required',
+            learnings: [],
+            progress: 0,
+            totalProgress: 0,
+            visitedUrls: []
+          }));
+          return;
+        }
+
+        // Check research limit
+        const count = await storage.getUserResearchCount(user.id);
+        if (count >= 100) {
+          ws.send(JSON.stringify({
+            status: 'ERROR',
+            error: 'Research limit reached. Maximum of 100 research queries allowed.',
+            learnings: [],
+            progress: 0,
+            totalProgress: 0,
+            visitedUrls: []
+          }));
+          return;
+        }
+
+        // Increment research count
+        await storage.incrementResearchCount(user.id);
+
+        // Handle research with a callback to save the report
+        await handleResearch(research, ws, async (report, visitedUrls) => {
+          if (report) {
+            await storage.createResearchReport({
+              userId: user.id,
+              query: research.query,
+              report,
+              visitedUrls
+            });
+          }
+        });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         ws.send(JSON.stringify({
