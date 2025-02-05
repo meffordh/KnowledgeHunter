@@ -66,44 +66,48 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Add LinkedIn Strategy
-  passport.use(new LinkedInStrategy({
-    clientID: process.env.LINKEDIN_CLIENT_ID!,
-    clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
-    callbackURL: "https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback",
-    scope: ['r_emailaddress', 'r_liteprofile'],
-    state: true
-  }, async (accessToken, refreshToken, profile, done) => {
-    try {
-      console.log('LinkedIn auth callback with profile:', profile.id);
-      const email = profile.emails?.[0]?.value;
+  // Only set up LinkedIn strategy if credentials are available
+  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
+    console.log('Setting up LinkedIn authentication strategy');
+    passport.use(new LinkedInStrategy({
+      clientID: process.env.LINKEDIN_CLIENT_ID,
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+      callbackURL: "/api/auth/linkedin/callback",
+      scope: ['r_emailaddress', 'r_liteprofile'],
+      state: true,
+      proxy: true
+    }, async (accessToken, refreshToken, profile, done) => {
+      try {
+        console.log('LinkedIn auth callback with profile:', profile.id);
+        const email = profile.emails?.[0]?.value;
 
-      if (!email) {
-        console.error('No email provided by LinkedIn');
-        return done(new Error('No email provided by LinkedIn'));
+        if (!email) {
+          console.error('No email provided by LinkedIn');
+          return done(new Error('No email provided by LinkedIn'));
+        }
+
+        let user = await storage.getUserByEmail(email);
+
+        if (!user) {
+          const randomPassword = randomBytes(16).toString('hex');
+          const hashedPassword = await hashPassword(randomPassword);
+
+          user = await storage.createUser({
+            email,
+            password: hashedPassword
+          });
+          console.log('Created new user for LinkedIn auth:', user.id);
+        }
+
+        done(null, user);
+      } catch (error) {
+        console.error('LinkedIn auth error:', error);
+        done(error);
       }
-
-      // Check if user exists
-      let user = await storage.getUserByEmail(email);
-
-      if (!user) {
-        // Create new user with random password for LinkedIn users
-        const randomPassword = randomBytes(16).toString('hex');
-        const hashedPassword = await hashPassword(randomPassword);
-
-        user = await storage.createUser({
-          email,
-          password: hashedPassword
-        });
-        console.log('Created new user for LinkedIn auth:', user.id);
-      }
-
-      done(null, user);
-    } catch (error) {
-      console.error('LinkedIn auth error:', error);
-      done(error);
-    }
-  }));
+    }));
+  } else {
+    console.warn('LinkedIn credentials not found, LinkedIn authentication will not be available');
+  }
 
   passport.use(
     new LocalStrategy(
@@ -152,7 +156,16 @@ export function setupAuth(app: Express) {
 
   // Add LinkedIn auth routes
   app.get('/api/auth/linkedin',
-    passport.authenticate('linkedin', { state: true }));
+    (req, res, next) => {
+      console.log('LinkedIn auth request received');
+      if (!process.env.LINKEDIN_CLIENT_ID || !process.env.LINKEDIN_CLIENT_SECRET) {
+        return res.status(503).json({ error: 'LinkedIn authentication is not configured' });
+      }
+      next();
+    },
+    passport.authenticate('linkedin', { 
+      state: randomBytes(32).toString('hex')
+    }));
 
   app.get('/api/auth/linkedin/callback',
     passport.authenticate('linkedin', {
@@ -160,7 +173,6 @@ export function setupAuth(app: Express) {
       failureRedirect: '/auth'
     }));
 
-  // Existing routes
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
     try {
@@ -198,7 +210,7 @@ export function setupAuth(app: Express) {
           researchCount: user.researchCount
         });
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
       res.status(500).json({ error: "Registration failed", details: error.message });
     }
@@ -206,7 +218,7 @@ export function setupAuth(app: Express) {
 
   app.post("/api/login", (req, res, next) => {
     console.log('Login request received:', req.body.email);
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         console.error('Login error:', err);
         return res.status(500).json({ error: "Login failed" });
