@@ -46,7 +46,47 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  wss.on('connection', async (ws) => {
+  wss.on('connection', async (ws, req) => {
+    console.log('WebSocket connection attempt');
+
+    // Extract session ID from cookie
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) {
+      console.log('WebSocket connection rejected: No cookie header');
+      ws.send(JSON.stringify({
+        status: 'ERROR',
+        error: 'Authentication required',
+        learnings: [],
+        progress: 0,
+        totalProgress: 0,
+        visitedUrls: []
+      }));
+      ws.close();
+      return;
+    }
+
+    // Parse session cookie
+    const cookies = Object.fromEntries(
+      cookieHeader.split(';')
+        .map(cookie => cookie.trim().split('='))
+        .map(([key, value]) => [key, value])
+    );
+
+    const sessionId = cookies['researchhunter.sid'];
+    if (!sessionId) {
+      console.log('WebSocket connection rejected: No session ID');
+      ws.send(JSON.stringify({
+        status: 'ERROR',
+        error: 'Authentication required',
+        learnings: [],
+        progress: 0,
+        totalProgress: 0,
+        visitedUrls: []
+      }));
+      ws.close();
+      return;
+    }
+
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
@@ -58,6 +98,7 @@ export function registerRoutes(app: Express): Server {
         // Verify user exists and get user data
         const user = await storage.getUser(userId);
         if (!user) {
+          console.log('Research rejected: User not found:', userId);
           ws.send(JSON.stringify({
             status: 'ERROR',
             error: 'User not found',
@@ -72,6 +113,7 @@ export function registerRoutes(app: Express): Server {
         // Check research limit
         const count = await storage.getUserResearchCount(user.id);
         if (count >= 100) {
+          console.log('Research rejected: Limit reached for user:', userId);
           ws.send(JSON.stringify({
             status: 'ERROR',
             error: 'Research limit reached. Maximum of 100 research queries allowed.',
@@ -83,6 +125,8 @@ export function registerRoutes(app: Express): Server {
           return;
         }
 
+        console.log('Starting research for user:', userId, 'query:', research.query);
+
         // Increment research count
         await storage.incrementResearchCount(user.id);
 
@@ -90,7 +134,7 @@ export function registerRoutes(app: Express): Server {
         await handleResearch(research, ws, async (report, visitedUrls) => {
           if (report) {
             try {
-              console.log('Attempting to save research report for user:', user.id, 'query:', research.query);
+              console.log('Saving research report for user:', user.id);
               const savedReport = await storage.createResearchReport({
                 userId: user.id,
                 query: research.query,
@@ -100,7 +144,6 @@ export function registerRoutes(app: Express): Server {
               console.log('Research report saved successfully:', savedReport.id);
             } catch (error) {
               console.error('Error saving research report:', error);
-              // Send error to client
               ws.send(JSON.stringify({
                 status: 'ERROR',
                 error: 'Failed to save research report',
@@ -113,7 +156,7 @@ export function registerRoutes(app: Express): Server {
           }
         });
       } catch (error) {
-        console.error('WebSocket error:', error);
+        console.error('WebSocket message handling error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         ws.send(JSON.stringify({
           status: 'ERROR',
