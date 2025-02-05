@@ -30,7 +30,8 @@ export const researchProgressSchema = z.object({
   learnings: z.array(z.string()),
   progress: z.number(),
   totalProgress: z.number(),
-  error: z.string().optional()
+  error: z.string().optional(),
+  report: z.string().optional()
 });
 
 export type ResearchProgress = z.infer<typeof researchProgressSchema>;

@@ -6,6 +6,7 @@ import { useResearch } from '@/hooks/use-research';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import ReactMarkdown from 'react-markdown';
 import {
   Form,
   FormControl,
@@ -133,7 +134,17 @@ export default function HomePage() {
                   </div>
                 )}
 
-                {progress.learnings.length > 0 && (
+                {progress.report && (
+                  <div className="mt-8">
+                    <Card>
+                      <CardContent className="prose prose-sm max-w-none pt-6">
+                        <ReactMarkdown>{progress.report}</ReactMarkdown>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {!progress.report && progress.learnings.length > 0 && (
                   <div>
                     <h3 className="font-medium">Learnings:</h3>
                     <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
