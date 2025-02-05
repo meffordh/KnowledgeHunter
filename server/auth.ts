@@ -34,7 +34,7 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   console.log('Setting up authentication...');
 
-  // Initialize session store
+  // Initialize session store with proper configuration
   const sessionStore = new PostgresStore({
     pool,
     createTableIfMissing: true,
@@ -49,7 +49,7 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: false,
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
       sameSite: 'lax'
     },
     name: 'researchhunter.sid'
@@ -67,7 +67,6 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Configure LocalStrategy
   passport.use(
     new LocalStrategy(
       { usernameField: 'email' },
@@ -113,7 +112,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Auth routes
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
     try {

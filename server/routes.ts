@@ -29,12 +29,16 @@ export function registerRoutes(app: Express): Server {
 
   // Add new endpoint to fetch user's research history
   app.get('/api/research/history', async (req, res) => {
+    console.log('Research history request received, authenticated:', req.isAuthenticated(), 'user:', req.user?.id);
+
     if (!req.isAuthenticated()) {
+      console.log('Research history request rejected: Not authenticated');
       return res.status(401).json({ error: 'Authentication required' });
     }
 
     try {
       const reports = await storage.getUserReports(req.user.id);
+      console.log('Research history retrieved:', reports.length, 'reports for user:', req.user.id);
       res.json(reports);
     } catch (error) {
       console.error('Error fetching research history:', error);
