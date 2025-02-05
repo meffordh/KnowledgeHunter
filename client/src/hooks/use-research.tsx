@@ -23,10 +23,10 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Get the current host and construct WebSocket URL with explicit port 5000
-      const host = window.location.hostname;
+      // Get the current host and construct WebSocket URL
+      const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${host}:5000/ws`;
+      const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
       const ws = new WebSocket(wsUrl);

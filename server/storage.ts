@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -44,9 +44,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async incrementResearchCount(userId: number): Promise<void> {
-    await db.update(users)
-      .set({ researchCount: db.raw('research_count + 1') })
-      .where(eq(users.id, userId));
+    await db.execute(
+      sql`UPDATE ${users} SET research_count = research_count + 1 WHERE id = ${userId}`
+    );
   }
 
   async getUserResearchCount(userId: number): Promise<number> {
