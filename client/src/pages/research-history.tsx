@@ -13,6 +13,12 @@ export default function ResearchHistoryPage() {
     queryKey: ["/api/research/history"],
     enabled: !!user,
     staleTime: 1000 * 60, // Re-fetch after 1 minute
+    onSuccess: (data) => {
+      console.log('Research history fetched successfully:', data?.length, 'reports');
+    },
+    onError: (error) => {
+      console.error('Error fetching research history:', error);
+    },
   });
 
   const downloadReport = (report: ResearchReport) => {
@@ -34,6 +40,8 @@ export default function ResearchHistoryPage() {
       </div>
     );
   }
+
+  console.log('Rendering research history with:', reports?.length, 'reports');
 
   return (
     <div className="container mx-auto py-8">
