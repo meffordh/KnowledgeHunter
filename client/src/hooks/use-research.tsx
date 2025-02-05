@@ -17,8 +17,12 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
 
   const startResearch = useCallback((research: Research) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    // Close any existing socket connection
+    if (socket) {
+      socket.close();
+    }
+
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -27,24 +31,38 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     };
 
     ws.onmessage = (event) => {
-      const progress: ResearchProgress = JSON.parse(event.data);
-      setProgress(progress);
+      try {
+        const progress: ResearchProgress = JSON.parse(event.data);
+        setProgress(progress);
 
-      if (progress.status === 'ERROR') {
+        if (progress.status === 'ERROR') {
+          toast({
+            title: 'Research Error',
+            description: progress.error || 'An error occurred during research',
+            variant: 'destructive',
+          });
+          setIsResearching(false);
+        }
+
+        if (progress.status === 'COMPLETED') {
+          toast({
+            title: 'Research Complete',
+            description: 'Your research has been completed successfully',
+          });
+          setIsResearching(false);
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
         toast({
-          title: 'Research Error',
-          description: progress.error,
+          title: 'Error',
+          description: 'Failed to process research update',
           variant: 'destructive',
         });
-        setIsResearching(false);
-      }
-
-      if (progress.status === 'COMPLETED') {
-        setIsResearching(false);
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
       toast({
         title: 'Connection Error',
         description: 'Failed to connect to research service',
@@ -53,8 +71,19 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       setIsResearching(false);
     };
 
+    ws.onclose = () => {
+      if (isResearching) {
+        toast({
+          title: 'Connection Lost',
+          description: 'Lost connection to research service',
+          variant: 'destructive',
+        });
+        setIsResearching(false);
+      }
+    };
+
     setSocket(ws);
-  }, [toast]);
+  }, [toast, socket, isResearching]);
 
   return (
     <ResearchContext.Provider value={{ startResearch, progress, isResearching }}>
