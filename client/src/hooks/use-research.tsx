@@ -22,11 +22,16 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       socket.close();
     }
 
-    // Use the current window location for WebSocket connection
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    // Get the current host from the window location
+    const host = window.location.host;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${host}/ws`;
+    console.log('Connecting to WebSocket URL:', wsUrl);
+
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      console.log('WebSocket connection established');
       setIsResearching(true);
       ws.send(JSON.stringify(research));
     };
