@@ -85,12 +85,17 @@ export function registerRoutes(app: Express): Server {
         // Handle research with a callback to save the report
         await handleResearch(research, ws, async (report, visitedUrls) => {
           if (report) {
-            await storage.createResearchReport({
-              userId: user.id,
-              query: research.query,
-              report,
-              visitedUrls
-            });
+            try {
+              await storage.createResearchReport({
+                userId: user.id,
+                query: research.query,
+                report,
+                visitedUrls
+              });
+              console.log('Research report saved successfully for user:', user.id);
+            } catch (error) {
+              console.error('Error saving research report:', error);
+            }
           }
         });
       } catch (error) {

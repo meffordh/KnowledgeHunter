@@ -12,6 +12,7 @@ export default function ResearchHistoryPage() {
   const { data: reports, isLoading } = useQuery<ResearchReport[]>({
     queryKey: ["/api/research/history"],
     enabled: !!user,
+    staleTime: 1000 * 60, // Re-fetch after 1 minute
   });
 
   const downloadReport = (report: ResearchReport) => {
@@ -19,7 +20,7 @@ export default function ResearchHistoryPage() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `research-${format(new Date(report.createdAt), 'yyyy-MM-dd-HH-mm')}.md`;
+    a.download = `research-${format(new Date(report.createdAt || ''), 'yyyy-MM-dd-HH-mm')}.md`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -53,7 +54,7 @@ export default function ResearchHistoryPage() {
                 </Button>
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                {format(new Date(report.createdAt), 'PPpp')}
+                {format(new Date(report.createdAt || ''), 'PPpp')}
               </p>
             </CardHeader>
             <CardContent>
@@ -68,7 +69,7 @@ export default function ResearchHistoryPage() {
             </CardContent>
           </Card>
         ))}
-        {reports?.length === 0 && (
+        {(!reports || reports.length === 0) && (
           <p className="text-center text-muted-foreground">
             No research reports found. Start a new research to see it here!
           </p>
