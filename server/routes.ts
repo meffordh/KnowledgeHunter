@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from 'ws';
-import { setupAuth } from './auth';
+import { setupAuth } from './auth.js';  // Fix import path
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
 import { storage } from './storage';
@@ -38,11 +38,25 @@ export function registerRoutes(app: Express): Server {
         const research = researchSchema.parse(data);
 
         // Get user from session
-        const user = req.user;
-        if (!user) {
+        if (!req.session?.passport?.user) {
           ws.send(JSON.stringify({
             status: 'ERROR',
             error: 'Authentication required',
+            learnings: [],
+            progress: 0,
+            totalProgress: 0,
+            visitedUrls: []
+          }));
+          return;
+        }
+
+        const userId = req.session.passport.user;
+        const user = await storage.getUser(userId);
+
+        if (!user) {
+          ws.send(JSON.stringify({
+            status: 'ERROR',
+            error: 'User not found',
             learnings: [],
             progress: 0,
             totalProgress: 0,
@@ -80,6 +94,7 @@ export function registerRoutes(app: Express): Server {
           }
         });
       } catch (error) {
+        console.error('WebSocket error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         ws.send(JSON.stringify({
           status: 'ERROR',

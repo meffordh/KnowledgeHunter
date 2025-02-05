@@ -29,11 +29,17 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
+  console.log('Setting up authentication...');
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.REPL_ID!,
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
+    cookie: {
+      secure: app.get("env") === "production",
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
+    },
   };
 
   if (app.get("env") === "production") {
@@ -48,68 +54,115 @@ export function setupAuth(app: Express) {
     new LocalStrategy(
       { usernameField: 'email' },
       async (email, password, done) => {
-        const user = await storage.getUserByEmail(email);
-        if (!user || !(await comparePasswords(password, user.password))) {
-          return done(null, false);
-        } else {
-          return done(null, user);
+        console.log('Attempting login with email:', email);
+        try {
+          const user = await storage.getUserByEmail(email);
+          if (!user || !(await comparePasswords(password, user.password))) {
+            console.log('Login failed: Invalid credentials');
+            return done(null, false);
+          } else {
+            console.log('Login successful for user:', user.id);
+            return done(null, user);
+          }
+        } catch (error) {
+          console.error('Login error:', error);
+          return done(error);
         }
       }
     )
   );
 
-  passport.serializeUser((user, done) => done(null, user.id));
+  passport.serializeUser((user, done) => {
+    console.log('Serializing user:', user.id);
+    done(null, user.id);
+  });
+
   passport.deserializeUser(async (id: number, done) => {
-    const user = await storage.getUser(id);
-    done(null, user);
+    console.log('Deserializing user:', id);
+    try {
+      const user = await storage.getUser(id);
+      done(null, user);
+    } catch (error) {
+      console.error('Deserialize error:', error);
+      done(error);
+    }
   });
 
   app.post("/api/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByEmail(req.body.email);
-    if (existingUser) {
-      return res.status(400).send("Email already registered");
+    console.log('Received registration request:', req.body);
+
+    try {
+      const existingUser = await storage.getUserByEmail(req.body.email);
+      if (existingUser) {
+        console.log('Registration failed: Email already exists');
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      const hashedPassword = await hashPassword(req.body.password);
+      const user = await storage.createUser({
+        email: req.body.email,
+        password: hashedPassword,
+      });
+
+      console.log('User created successfully:', user.id);
+
+      req.login(user, (err) => {
+        if (err) {
+          console.error('Login after registration failed:', err);
+          return next(err);
+        }
+        res.status(201).json(user);
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      next(error);
     }
-
-    const user = await storage.createUser({
-      ...req.body,
-      password: await hashPassword(req.body.password),
-    });
-
-    req.login(user, (err) => {
-      if (err) return next(err);
-      res.status(201).json(user);
-    });
   });
 
   app.post("/api/login", passport.authenticate("local"), (req, res) => {
+    console.log('Login successful, sending user data');
     res.status(200).json(req.user);
   });
 
   app.post("/api/logout", (req, res, next) => {
+    console.log('Logout request received');
     req.logout((err) => {
-      if (err) return next(err);
+      if (err) {
+        console.error('Logout error:', err);
+        return next(err);
+      }
       res.sendStatus(200);
     });
   });
 
   app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.isAuthenticated()) {
+      console.log('Unauthorized access to /api/user');
+      return res.sendStatus(401);
+    }
     res.json(req.user);
   });
 
   // Add endpoints for research reports
   app.get("/api/reports", async (req, res) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.isAuthenticated()) {
+      console.log('Unauthorized access to /api/reports');
+      return res.sendStatus(401);
+    }
     const reports = await storage.getUserReports(req.user.id);
     res.json(reports);
   });
 
   // Add middleware to check research limit
   app.use("/api/research", async (req, res, next) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    if (!req.isAuthenticated()) {
+      console.log('Unauthorized access to /api/research');
+      return res.sendStatus(401);
+    }
 
     const count = await storage.getUserResearchCount(req.user.id);
     if (count >= 100) {
+      console.log('Research limit reached for user:', req.user.id);
       return res.status(403).json({ 
         error: "Research limit reached", 
         message: "You have reached the maximum limit of 100 research queries."
