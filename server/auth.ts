@@ -11,7 +11,6 @@ import { pool } from "./db";
 import connectPg from "connect-pg-simple";
 import fetch from "node-fetch";
 
-
 declare global {
   namespace Express {
     interface User extends SelectUser {}
@@ -65,6 +64,8 @@ export function setupAuth(app: Express) {
   }
 
   app.use(session(sessionSettings));
+
+  // Initialize passport before setting up strategies
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -181,6 +182,10 @@ export function setupAuth(app: Express) {
     (req, res, next) => {
       console.log('LinkedIn auth request received');
       if (!process.env.LINKEDIN_CLIENT_ID || !process.env.LINKEDIN_CLIENT_SECRET) {
+        console.error('LinkedIn credentials missing:', {
+          hasClientId: !!process.env.LINKEDIN_CLIENT_ID,
+          hasClientSecret: !!process.env.LINKEDIN_CLIENT_SECRET
+        });
         return res.status(503).json({ error: 'LinkedIn authentication is not configured' });
       }
       next();
