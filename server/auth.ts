@@ -9,6 +9,8 @@ import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { pool } from "./db";
 import connectPg from "connect-pg-simple";
+import fetch from "node-fetch";
+
 
 declare global {
   namespace Express {
@@ -72,17 +74,37 @@ export function setupAuth(app: Express) {
     passport.use(new LinkedInStrategy({
       clientID: process.env.LINKEDIN_CLIENT_ID,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
-      callbackURL: "/api/auth/linkedin/callback",
-      scope: ['r_emailaddress', 'r_liteprofile'],
+      callbackURL: "https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback",
+      scope: ['openid'],
       state: true,
       proxy: true
     }, async (accessToken, refreshToken, profile, done) => {
       try {
-        console.log('LinkedIn auth callback with profile:', profile.id);
-        const email = profile.emails?.[0]?.value;
+        console.log('LinkedIn auth callback received:', {
+          profileId: profile.id,
+          hasEmails: !!profile.emails?.length
+        });
 
+        // Fetch user info from LinkedIn's v2 userinfo endpoint
+        const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (!userinfoResponse.ok) {
+          console.error('Failed to fetch userinfo:', await userinfoResponse.text());
+          return done(new Error('Failed to fetch user information from LinkedIn'));
+        }
+
+        const userInfo = await userinfoResponse.json();
+        console.log('LinkedIn userinfo received:', {
+          hasEmail: !!userInfo.email
+        });
+
+        const email = userInfo.email;
         if (!email) {
-          console.error('No email provided by LinkedIn');
+          console.error('No email provided in userinfo');
           return done(new Error('No email provided by LinkedIn'));
         }
 
@@ -154,7 +176,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Add LinkedIn auth routes
+  // Update LinkedIn auth routes
   app.get('/api/auth/linkedin',
     (req, res, next) => {
       console.log('LinkedIn auth request received');
@@ -163,15 +185,22 @@ export function setupAuth(app: Express) {
       }
       next();
     },
-    passport.authenticate('linkedin', { 
-      state: randomBytes(32).toString('hex')
-    }));
+    passport.authenticate('linkedin', {
+      state: randomBytes(32).toString('hex'),
+      scope: ['openid']
+    })
+  );
 
   app.get('/api/auth/linkedin/callback',
-    passport.authenticate('linkedin', {
-      successRedirect: '/',
-      failureRedirect: '/auth'
-    }));
+    (req, res, next) => {
+      console.log('LinkedIn callback received');
+      passport.authenticate('linkedin', {
+        successRedirect: '/',
+        failureRedirect: '/auth',
+        failureMessage: true
+      })(req, res, next);
+    }
+  );
 
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
