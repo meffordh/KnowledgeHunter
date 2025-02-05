@@ -31,19 +31,27 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   console.log('Setting up authentication...');
 
+  // Configure session middleware with secure settings for Replit
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.REPL_ID!,
+    secret: process.env.REPL_ID || 'your-fallback-secret',
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
     cookie: {
-      secure: app.get("env") === "production",
+      secure: false, // Set to false for non-HTTPS development
+      httpOnly: true,
       maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
+      sameSite: 'lax'
     },
+    name: 'researchhunter.sid' // Custom session name
   };
 
+  // Trust proxy in production (Replit environment)
   if (app.get("env") === "production") {
     app.set("trust proxy", 1);
+    if (sessionSettings.cookie) {
+      sessionSettings.cookie.secure = true;
+    }
   }
 
   app.use(session(sessionSettings));
@@ -59,11 +67,10 @@ export function setupAuth(app: Express) {
           const user = await storage.getUserByEmail(email);
           if (!user || !(await comparePasswords(password, user.password))) {
             console.log('Login failed: Invalid credentials');
-            return done(null, false);
-          } else {
-            console.log('Login successful for user:', user.id);
-            return done(null, user);
+            return done(null, false, { message: 'Invalid email or password' });
           }
+          console.log('Login successful for user:', user.id);
+          return done(null, user);
         } catch (error) {
           console.error('Login error:', error);
           return done(error);
@@ -81,6 +88,9 @@ export function setupAuth(app: Express) {
     console.log('Deserializing user:', id);
     try {
       const user = await storage.getUser(id);
+      if (!user) {
+        return done(null, false);
+      }
       done(null, user);
     } catch (error) {
       console.error('Deserialize error:', error);
@@ -89,9 +99,13 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/register", async (req, res, next) => {
-    console.log('Received registration request:', req.body);
+    console.log('Received registration request for email:', req.body.email);
 
     try {
+      if (!req.body.email || !req.body.password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
       const existingUser = await storage.getUserByEmail(req.body.email);
       if (existingUser) {
         console.log('Registration failed: Email already exists');
@@ -111,36 +125,56 @@ export function setupAuth(app: Express) {
           console.error('Login after registration failed:', err);
           return next(err);
         }
-        res.status(201).json(user);
+        res.status(201).json({ id: user.id, email: user.email, researchCount: user.researchCount });
       });
     } catch (error) {
       console.error('Registration error:', error);
-      next(error);
+      res.status(500).json({ error: "Registration failed" });
     }
   });
 
-  app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    console.log('Login successful, sending user data');
-    res.status(200).json(req.user);
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        console.error('Login error:', err);
+        return next(err);
+      }
+      if (!user) {
+        return res.status(401).json({ error: info?.message || 'Invalid credentials' });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          console.error('Login error:', err);
+          return next(err);
+        }
+        console.log('Login successful, sending user data');
+        res.json({ id: user.id, email: user.email, researchCount: user.researchCount });
+      });
+    })(req, res, next);
   });
 
-  app.post("/api/logout", (req, res, next) => {
+  app.post("/api/logout", (req, res) => {
     console.log('Logout request received');
     req.logout((err) => {
       if (err) {
         console.error('Logout error:', err);
-        return next(err);
+        return res.status(500).json({ error: "Logout failed" });
       }
       res.sendStatus(200);
     });
   });
 
   app.get("/api/user", (req, res) => {
+    console.log('User request received, authenticated:', req.isAuthenticated());
     if (!req.isAuthenticated()) {
       console.log('Unauthorized access to /api/user');
       return res.sendStatus(401);
     }
-    res.json(req.user);
+    res.json({
+      id: req.user.id,
+      email: req.user.email,
+      researchCount: req.user.researchCount
+    });
   });
 
   // Add endpoints for research reports
@@ -149,10 +183,14 @@ export function setupAuth(app: Express) {
       console.log('Unauthorized access to /api/reports');
       return res.sendStatus(401);
     }
-    const reports = await storage.getUserReports(req.user.id);
-    res.json(reports);
+    try {
+      const reports = await storage.getUserReports(req.user.id);
+      res.json(reports);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      res.status(500).json({ error: "Failed to fetch reports" });
+    }
   });
-
   // Add middleware to check research limit
   app.use("/api/research", async (req, res, next) => {
     if (!req.isAuthenticated()) {

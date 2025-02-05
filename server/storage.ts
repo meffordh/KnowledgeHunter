@@ -1,9 +1,9 @@
-import session from "express-session";
-import { users, researchReports, type User, type InsertUser, type ResearchReport, type InsertResearchReport } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
+import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
+import { users, researchReports, type User, type InsertUser, type ResearchReport, type InsertResearchReport } from "@shared/schema";
 
 const PostgresSessionStore = connectPg(session);
 
