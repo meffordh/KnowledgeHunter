@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback, useState } from 'react';
 import { Research, ResearchProgress } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 
 type ResearchContextType = {
   startResearch: (research: Research) => void;
@@ -15,15 +16,25 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
   const [isResearching, setIsResearching] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const startResearch = useCallback((research: Research) => {
+    if (!user) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to start research.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // Close any existing socket connection
     if (socket) {
       socket.close();
     }
 
     try {
-      // Get the current host and construct WebSocket URL
+      // Get the current host and construct WebSocket URL with session cookie
       const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${host}/ws`;
@@ -34,7 +45,8 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
-        ws.send(JSON.stringify(research));
+        // Include user ID in the research request
+        ws.send(JSON.stringify({ ...research, userId: user.id }));
       };
 
       ws.onmessage = (event) => {
@@ -101,7 +113,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       });
       setIsResearching(false);
     }
-  }, [toast, socket, isResearching]);
+  }, [toast, socket, isResearching, user]);
 
   return (
     <ResearchContext.Provider value={{ startResearch, progress, isResearching }}>

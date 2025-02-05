@@ -28,31 +28,17 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  wss.on('connection', (ws, req) => {
-    // Extract session from the upgrade request
-    const sessionId = parseUrl(req.url!, true).query.sessionId;
-
+  wss.on('connection', async (ws) => {
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
-        const research = researchSchema.parse(data);
+        const { userId, ...researchData } = data;
 
-        // Get user from session
-        if (!req.session?.passport?.user) {
-          ws.send(JSON.stringify({
-            status: 'ERROR',
-            error: 'Authentication required',
-            learnings: [],
-            progress: 0,
-            totalProgress: 0,
-            visitedUrls: []
-          }));
-          return;
-        }
+        // Validate research data
+        const research = researchSchema.parse(researchData);
 
-        const userId = req.session.passport.user;
+        // Verify user exists and get user data
         const user = await storage.getUser(userId);
-
         if (!user) {
           ws.send(JSON.stringify({
             status: 'ERROR',
