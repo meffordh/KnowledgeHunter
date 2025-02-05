@@ -22,12 +22,13 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       socket.close();
     }
 
+    // Use the current window location for WebSocket connection
     const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      ws.send(JSON.stringify(research));
       setIsResearching(true);
+      ws.send(JSON.stringify(research));
     };
 
     ws.onmessage = (event) => {
@@ -42,6 +43,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
             variant: 'destructive',
           });
           setIsResearching(false);
+          ws.close();
         }
 
         if (progress.status === 'COMPLETED') {
@@ -50,6 +52,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
             description: 'Your research has been completed successfully',
           });
           setIsResearching(false);
+          ws.close();
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
