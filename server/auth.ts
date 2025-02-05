@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as LinkedInStrategy } from "passport-linkedin-oauth2";
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -34,7 +35,6 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   console.log('Setting up authentication...');
 
-  // Initialize session store with proper configuration
   const sessionStore = new PostgresStore({
     pool,
     createTableIfMissing: true,
@@ -49,13 +49,12 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: false,
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: 24 * 60 * 60 * 1000,
       sameSite: 'lax'
     },
     name: 'researchhunter.sid'
   };
 
-  // Enable secure cookies in production
   if (app.get('env') === 'production') {
     app.set('trust proxy', 1);
     if (sessionSettings.cookie) {
@@ -66,6 +65,45 @@ export function setupAuth(app: Express) {
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Add LinkedIn Strategy
+  passport.use(new LinkedInStrategy({
+    clientID: process.env.LINKEDIN_CLIENT_ID!,
+    clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
+    callbackURL: "https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback",
+    scope: ['r_emailaddress', 'r_liteprofile'],
+    state: true
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      console.log('LinkedIn auth callback with profile:', profile.id);
+      const email = profile.emails?.[0]?.value;
+
+      if (!email) {
+        console.error('No email provided by LinkedIn');
+        return done(new Error('No email provided by LinkedIn'));
+      }
+
+      // Check if user exists
+      let user = await storage.getUserByEmail(email);
+
+      if (!user) {
+        // Create new user with random password for LinkedIn users
+        const randomPassword = randomBytes(16).toString('hex');
+        const hashedPassword = await hashPassword(randomPassword);
+
+        user = await storage.createUser({
+          email,
+          password: hashedPassword
+        });
+        console.log('Created new user for LinkedIn auth:', user.id);
+      }
+
+      done(null, user);
+    } catch (error) {
+      console.error('LinkedIn auth error:', error);
+      done(error);
+    }
+  }));
 
   passport.use(
     new LocalStrategy(
@@ -112,6 +150,17 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Add LinkedIn auth routes
+  app.get('/api/auth/linkedin',
+    passport.authenticate('linkedin', { state: true }));
+
+  app.get('/api/auth/linkedin/callback',
+    passport.authenticate('linkedin', {
+      successRedirect: '/',
+      failureRedirect: '/auth'
+    }));
+
+  // Existing routes
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
     try {
