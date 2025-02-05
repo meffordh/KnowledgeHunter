@@ -1,0 +1,36 @@
+Invalid search results structure: {
+  success: true,
+  data: [
+    {
+      url: 'https://www.tripadvisor.com/Restaurants-g34515-c31-Orlando_Florida.html',
+      title: 'THE 10 BEST Pizza Places in Orlando (Updated 2025) - Tripadvisor',
+      description: "Pizza in Orlando · 1. Solorzano's Pizzeria & Poolside Bistro. (419). Open now · 2. Mister O1 Extraordinary Pizza - Dr. Phillips. (62) · 3."
+    },
+    {
+      url: 'https://www.yelp.com/search?find_desc=Pizza&find_loc=Orlando%2C+FL',
+      title: 'TOP 10 BEST Pizza in Orlando, FL - Updated 2025 - Yelp',
+      description: "Top 10 Best Pizza Near Orlando, Florida · 1. Mister 01 Extraordinary Pizza. 4.7 (47 reviews). 7.5 mi · 2. Mia's Italian Kitchen. 4.4 (2.2k reviews). 7.1 mi · 3."
+    },
+    {
+      url: 'https://www.reddit.com/r/orlando/comments/132cekl/looking_for_good_pizza/',
+      title: 'Looking for good pizza - Orlando - Reddit',
+      description: "Metro Espresso Pizza Café downtown. Anytime we take people there they say it's the best pizza they've ever had, and I agree."
+    },
+    {
+      url: 'https://www.fox35orlando.com/news/the-highest-ranked-pizza-places-in-orlando-report',
+      title: 'The highest-ranked pizza places in Orlando: report',
+      description: "The No. 1 pizza restaurant in Orlando, according to this report, is Ziggie's Pizza on Virginia Drive in Orlando. It was given a rating of 4/8 out of 5 on Yelp."
+    },
+    {
+      url: 'https://www.yelp.com/search?find_desc=Stone+Fired+Pizza&find_loc=Orlando%2C+FL',
+      title: 'Stone Fired Pizza Orlando, FL - Last Updated February 2025 - Yelp',
+      description: '1. Stone Fired Pizza · (137 reviews). 1.9 mi. 627 Hoffner Ave, Edgewood, FL 32809. (407) 730-3473 ; 2. Brick & Fire Pizza and Pasta parlor · (438 reviews). 1.4 mi.'
+    }
+  ],
+  warning: undefined
+}
+Error expanding query: TypeError: Cannot read properties of undefined (reading 'create')
+    at expandQuery (/home/runner/workspace/server/deep-research.ts:17:52)
+    at handleResearch (/home/runner/workspace/server/deep-research.ts:130:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async WebSocket.<anonymous> (/home/runner/workspace/server/routes.ts:19:9)
