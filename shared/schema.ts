@@ -20,6 +20,7 @@ export const researchSchema = z.object({
   query: z.string().min(1, "Query is required"),
   breadth: z.number().min(2).max(10),
   depth: z.number().min(1).max(5),
+  clarifications: z.record(z.string(), z.string()).optional(),
 });
 
 export type Research = z.infer<typeof researchSchema>;
@@ -31,7 +32,8 @@ export const researchProgressSchema = z.object({
   progress: z.number(),
   totalProgress: z.number(),
   error: z.string().optional(),
-  report: z.string().optional()
+  report: z.string().optional(),
+  visitedUrls: z.array(z.string())
 });
 
 export type ResearchProgress = z.infer<typeof researchProgressSchema>;
