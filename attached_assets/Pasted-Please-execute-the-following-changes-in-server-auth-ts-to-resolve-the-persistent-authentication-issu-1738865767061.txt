@@ -1,0 +1,57 @@
+Please execute the following changes in server/auth.ts to resolve the persistent authentication issue:
+
+Remove the Forced Profile URL Override:
+In the LinkedIn strategy configuration, remove the profileURL option so that the strategy uses its default endpoint. (The package’s default is to fetch from https://api.linkedin.com/v2/me with the proper projection parameters.)
+For example, change:
+
+js
+Copy
+passport.use(new LinkedInStrategy({
+  clientID: process.env.LINKEDIN_CLIENT_ID,
+  clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+  callbackURL,
+  scope: ['openid', 'profile', 'email'],
+  state: true,
+  proxy: true,
+  profileURL: 'https://api.linkedin.com/v2/userinfo'
+}, async (accessToken, refreshToken, profile, done) => {
+  // verify callback code...
+}));
+to:
+
+js
+Copy
+passport.use(new LinkedInStrategy({
+  clientID: process.env.LINKEDIN_CLIENT_ID,
+  clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+  callbackURL,
+  scope: ['openid', 'profile', 'email'],
+  state: true,
+  proxy: true
+  // Remove profileURL so default endpoint is used.
+}, async (accessToken, refreshToken, profile, done) => {
+  console.log('LinkedIn auth callback received:', {
+    hasToken: !!accessToken,
+    tokenLength: accessToken?.length,
+    profile: profile ? 'exists' : 'undefined'
+  });
+  // Use the profile data to locate or create the user:
+  const email = profile.emails?.[0]?.value || `${profile.id}@linkedin.user`;
+  console.log('Looking up user by email:', email);
+  let user = await storage.getUserByEmail(email);
+  if (!user) {
+    console.log('Creating new user for email:', email);
+    const randomPassword = randomBytes(16).toString('hex');
+    const hashedPassword = await hashPassword(randomPassword);
+    user = await storage.createUser({ email, password: hashedPassword });
+    console.log('Created new user:', user.id);
+  } else {
+    console.log('Found existing user:', user.id);
+  }
+  return done(null, user);
+}));
+Verify Scopes and LinkedIn App Permissions:
+Ensure that your LinkedIn Developer Portal settings allow the requested scopes (openid, profile, and email). This is critical for obtaining the profile and email information.
+
+Test the Flow:
+After these changes, test the authentication flow by navigating to /api/auth/linkedin and verifying that the callback logs show a populated profile object and that GET /api/user subsequently returns the authenticated user.
