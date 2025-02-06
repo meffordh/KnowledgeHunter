@@ -1,4 +1,3 @@
-
 import { Auth } from "@auth/express";
 import LinkedIn from "@auth/core/providers/linkedin";
 import express from "express";
@@ -7,7 +6,7 @@ import { storage } from "./storage";
 export function setupAuth(app: express.Express) {
   const router = express.Router();
 
-  Auth.create({
+  const auth = new Auth({
     secret: process.env.AUTH_SECRET || process.env.REPLIT_ID || 'development-secret',
     trustHost: true,
     providers: [
