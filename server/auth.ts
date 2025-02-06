@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-const LinkedInStrategy = require('passport-linkedin-oauth2').Strategy;
+import { Strategy as LinkedInStrategy } from 'passport-linkedin-oauth2';
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
