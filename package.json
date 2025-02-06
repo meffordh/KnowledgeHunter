@@ -60,6 +60,7 @@
     "js-tiktoken": "^1.0.18",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
+    "node-fetch": "^3.3.2",
     "openai": "^4.83.0",
     "passport": "^0.7.0",
     "passport-linkedin-oauth2": "^2.0.0",

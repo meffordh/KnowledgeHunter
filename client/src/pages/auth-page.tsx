@@ -24,11 +24,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 
 export default function AuthPage() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
+  const error = new URLSearchParams(window.location.search).get('error');
 
   useEffect(() => {
     if (user) {
@@ -78,6 +80,12 @@ export default function AuthPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {error && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertDescription>{decodeURIComponent(error)}</AlertDescription>
+                </Alert>
+              )}
+
               <Button
                 type="button"
                 variant="outline"

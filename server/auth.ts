@@ -18,7 +18,7 @@ declare global {
 }
 
 const scryptAsync = promisify(scrypt);
-const PostgresStore = connectPg(session);
+const PostgresSessionStore = connectPg(session);
 
 async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -36,7 +36,7 @@ async function comparePasswords(supplied: string, stored: string) {
 export function setupAuth(app: Express) {
   console.log('Setting up authentication...');
 
-  const sessionStore = new PostgresStore({
+  const sessionStore = new PostgresSessionStore({
     pool,
     createTableIfMissing: true,
     tableName: 'session'
@@ -76,7 +76,7 @@ export function setupAuth(app: Express) {
       clientID: process.env.LINKEDIN_CLIENT_ID,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
       callbackURL: "https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback",
-      scope: ['openid'],
+      scope: ['openid', 'profile', 'email'],
       state: true,
       proxy: true
     }, async (accessToken, refreshToken, profile, done) => {
@@ -94,13 +94,15 @@ export function setupAuth(app: Express) {
         });
 
         if (!userinfoResponse.ok) {
-          console.error('Failed to fetch userinfo:', await userinfoResponse.text());
+          const errorText = await userinfoResponse.text();
+          console.error('Failed to fetch userinfo:', errorText);
           return done(new Error('Failed to fetch user information from LinkedIn'));
         }
 
         const userInfo = await userinfoResponse.json();
         console.log('LinkedIn userinfo received:', {
-          hasEmail: !!userInfo.email
+          hasEmail: !!userInfo.email,
+          scopes: userInfo.scope
         });
 
         const email = userInfo.email;
@@ -177,7 +179,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Update LinkedIn auth routes
+  // LinkedIn auth routes
   app.get('/api/auth/linkedin',
     (req, res, next) => {
       console.log('LinkedIn auth request received');
@@ -192,13 +194,25 @@ export function setupAuth(app: Express) {
     },
     passport.authenticate('linkedin', {
       state: randomBytes(32).toString('hex'),
-      scope: ['openid']
+      scope: ['openid', 'profile', 'email']
     })
   );
 
   app.get('/api/auth/linkedin/callback',
     (req, res, next) => {
-      console.log('LinkedIn callback received');
+      console.log('LinkedIn callback received with query:', req.query);
+
+      // Handle LinkedIn-specific errors
+      if (req.query.error) {
+        console.error('LinkedIn auth error:', {
+          error: req.query.error,
+          description: req.query.error_description
+        });
+
+        // Redirect to auth page with error message
+        return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
+      }
+
       passport.authenticate('linkedin', {
         successRedirect: '/',
         failureRedirect: '/auth',
