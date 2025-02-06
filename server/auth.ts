@@ -98,7 +98,7 @@ export function setupAuth(app: Express) {
       clientID: process.env.LINKEDIN_CLIENT_ID,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
       callbackURL,
-      scope: ['openid', 'profile', 'email'],
+      scope: ['openid', 'profile', 'email', 'w_member_social'],
       state: true,
       proxy: true
     }, async (accessToken, refreshToken, profile, done) => {
@@ -109,13 +109,14 @@ export function setupAuth(app: Express) {
           tokenLength: accessToken?.length
         });
 
-        // Fetch user info from LinkedIn's userinfo endpoint
+        // Fetch user info from LinkedIn's OpenID Connect userinfo endpoint
         console.log('Fetching userinfo from LinkedIn...');
         const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
-            'x-li-format': 'json'
+            'x-li-format': 'json',
+            'X-Restli-Protocol-Version': '2.0.0'
           }
         });
 
@@ -178,7 +179,7 @@ export function setupAuth(app: Express) {
         });
         passport.authenticate('linkedin', {
           state: true,
-          scope: ['openid', 'profile', 'email']
+          scope: ['openid', 'profile', 'email', 'w_member_social']
         })(req, res, next);
       }
     );
@@ -243,7 +244,7 @@ export function setupAuth(app: Express) {
     console.warn('LinkedIn credentials not found, LinkedIn authentication will not be available');
   }
 
-  // Local Strategy (remains unchanged)
+  // Local Strategy
   passport.use(
     new LocalStrategy(
       { usernameField: 'email' },
