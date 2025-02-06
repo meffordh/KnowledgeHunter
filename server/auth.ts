@@ -1,3 +1,4 @@
+
 import { Auth } from "@auth/express";
 import LinkedIn from "@auth/core/providers/linkedin";
 import express from "express";
@@ -62,13 +63,4 @@ export function setupAuth(app: express.Express) {
   }).use(app);
 
   return router;
-}
-
-app.get("/api/user", async (req, res) => {
-    const session = await auth.validateRequest(req);
-    if (!session?.user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    res.json(session.user);
-  });
 }
