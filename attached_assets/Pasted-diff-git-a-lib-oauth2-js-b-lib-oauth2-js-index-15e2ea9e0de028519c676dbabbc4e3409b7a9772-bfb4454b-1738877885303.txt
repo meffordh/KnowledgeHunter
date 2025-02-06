@@ -1,0 +1,89 @@
+diff --git a/lib/oauth2.js b/lib/oauth2.js
+index 15e2ea9e0de028519c676dbabbc4e3409b7a9772..bfb4454b578d323279d36eeaf6970e622f39210e 100644
+--- a/lib/oauth2.js
++++ b/lib/oauth2.js
+@@ -2,31 +2,10 @@ var util = require('util')
+ var OAuth2Strategy = require('passport-oauth2')
+ var InternalOAuthError = require('passport-oauth2').InternalOAuthError;
+ 
+-var liteProfileUrl = 'https://api.linkedin.com/v2/me?projection=(' +
+-  'id,' +
+-  'firstName,' +
+-  'lastName,' +
+-  'maidenName,' +
+-  'profilePicture(displayImage~:playableStreams)' +
+-  ')';
++var liteProfileUrl = 'https://api.linkedin.com/v2/userinfo';
+ 
+ // Most of these fields are only available for members of partner programs.
+-var basicProfileUrl = 'https://api.linkedin.com/v2/me?projection=(' +
+-  'id,' +
+-  'firstName,' +
+-  'lastName,' +
+-  'maidenName,' +
+-  'profilePicture(displayImage~:playableStreams),' +
+-  'phoneticFirstName,' +
+-  'phoneticLastName,' +
+-  'headline,' +
+-  'location,' +
+-  'industryId,' +
+-  'summary,' +
+-  'positions,' +
+-  'vanityName,' +
+-  'lastModified' +
+-  ')';
++var basicProfileUrl = 'https://api.linkedin.com/v2/userinfo';
+ 
+ function Strategy(options, verify) {
+   options = options || {};
+@@
+ Strategy.prototype.userProfile = function(accessToken, done) {
+ 
+   this._oauth2.get(this._profileUrl || basicProfileUrl, accessToken, function(err, body, res) {
+     if (err) {
+       return done(new InternalOAuthError('failed to fetch user profile', err));
+     }
+ 
+     var profile;
+     try {
+       profile = parseProfile(body);
+
++      return done(null, profile)
+     } catch(e) {
+       return done(new InternalOAuthError('failed to parse profile response', e));
+     }
+
+@@
+ function parseProfile(body) {
+   var json = JSON.parse(body);
+
+   var profile = { provider: 'linkedin' };
+
+-  profile.id = json.id;
++  profile.id = json.sub;
+
+   profile.name = {
+-    givenName: getName(json.firstName),
+-    familyName: getName(json.lastName)
++    givenName: json.given_name,
++    familyName: json.family_name
+   };
+
+   profile.displayName = profile.name.givenName + ' ' + profile.name.familyName;
+
+   profile.photos = getProfilePictures(json.profilePicture);
+
++  profile.emails = [
++    {
++      value: json.email,
++      verified: json.email_verified,
++    }
++  ]
++
+   profile._raw = body;
+   profile._json = json;
+
+   return profile;
+ }
+ 
+ module.exports = Strategy;
