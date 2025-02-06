@@ -88,16 +88,10 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Only set up LinkedIn strategy if credentials are available
   if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
     console.log('Setting up LinkedIn authentication strategy');
 
-    const host = process.env.REPL_SLUG ? 
-      `${process.env.REPL_SLUG}.replit.app` : 
-      app.get('host') || 'localhost:5000';
-
-    const protocol = process.env.REPL_SLUG ? 'https' : 'http';
-    const callbackURL = `${protocol}://${host}/api/auth/linkedin/callback`;
+    const callbackURL = 'https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback';
     console.log('LinkedIn callback URL:', callbackURL);
 
     passport.use(new LinkedInStrategy({
@@ -112,7 +106,8 @@ export function setupAuth(app: Express) {
         console.log('LinkedIn auth callback received:', {
           profileId: profile.id,
           hasEmails: !!profile.emails?.length,
-          accessToken: !!accessToken
+          accessToken: !!accessToken,
+          headers: profile._json
         });
 
         // Fetch user info from LinkedIn's v2 userinfo endpoint
@@ -173,7 +168,10 @@ export function setupAuth(app: Express) {
   // LinkedIn auth routes
   app.get('/api/auth/linkedin',
     (req, res, next) => {
-      console.log('LinkedIn auth request received');
+      console.log('LinkedIn auth request received', {
+        session: req.session,
+        sessionID: req.sessionID
+      });
       passport.authenticate('linkedin', {
         state: true,
         scope: ['openid', 'profile', 'email']
@@ -187,8 +185,7 @@ export function setupAuth(app: Express) {
         query: req.query,
         hasSession: !!req.session,
         sessionID: req.sessionID,
-        headers: req.headers,
-        host: req.get('host')
+        headers: req.headers
       });
 
       if (req.query.error) {
@@ -204,7 +201,7 @@ export function setupAuth(app: Express) {
           hasError: !!err,
           hasUser: !!user,
           info,
-          session: !!req.session
+          session: req.session
         });
 
         if (err) {
@@ -224,12 +221,14 @@ export function setupAuth(app: Express) {
           }
 
           console.log('Successfully logged in user:', user.id);
+
+          // Save session before redirect
           req.session.save((err) => {
             if (err) {
               console.error('Session save error:', err);
               return res.redirect('/auth?error=Session save failed');
             }
-            console.log('Session saved successfully');
+            console.log('Session saved successfully, redirecting to home page');
             res.redirect('/');
           });
         });
