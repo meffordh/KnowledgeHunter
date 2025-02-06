@@ -1,0 +1,40 @@
+Counting objects: 100% (404/404), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (397/397), done.
+Writing objects: 100% (404/404), 1.14 MiB | 5.43 MiB/s, done.
+Total 404 (delta 224), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (224/224), done.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:     
+remote:       —— OpenAI API Key ————————————————————————————————————
+remote:        locations:
+remote:          - commit: 19390fad2ebe4fe6ac8f0af6a0ec6aab97e3e67d
+remote:            path: attached_assets/Pasted-Combined-Proposal-Full-Stack-Web-Application-for-Deep-Research-This-document-defines-both-the-proj-1738777947704.txt:327
+remote:          - commit: 7f2cac4966bbaca9b6d18f1bab494e2a4a07d5fa
+remote:            path: attached_assets/Pasted-LATEST-PRD-AND-REQUIREMENTS-DOCUMENT-This-proposal-provides-the-complete-details-needed-to-build-a--1738780415787.txt:301
+remote:          - commit: e507e6102b2016d28e93b263dabae52b377ca783
+remote:            path: server/deep-research.ts:8
+remote:          - commit: 822bd4540498e8343faa4ab7691a1a35dc0db893
+remote:            path: server/deep-research.ts:8
+remote:          - commit: 0a79cc4a429552df27ff46acfacfc8cd870e48d3
+remote:            path: server/deep-research.ts:8
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/meffordh/DeepResearchWebUI2/security/secret-scanning/unblock-secret/2sg0LmLaHaVGlZpYMS0yQV4KI1m
+remote:     
+remote: 
+remote: 
+To https://github.com/meffordh/DeepResearchWebUI2
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/meffordh/DeepResearchWebUI2'
