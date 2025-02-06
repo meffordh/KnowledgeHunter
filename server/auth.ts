@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as LinkedInStrategy } from "passport-linkedin-oauth2";
+const LinkedInStrategy = require('passport-linkedin-oauth2').Strategy;
 import { Express } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -100,7 +100,8 @@ export function setupAuth(app: Express) {
       callbackURL,
       scope: ['openid', 'profile', 'email'],
       state: true,
-      proxy: true
+      proxy: true,
+      profileURL: 'https://api.linkedin.com/v2/userinfo'
     }, async (accessToken, refreshToken, profile, done) => {
       try {
         console.log('LinkedIn auth callback received:', {
@@ -109,31 +110,7 @@ export function setupAuth(app: Express) {
           profile: profile ? 'exists' : 'undefined'
         });
 
-        // Fetch user info using OIDC endpoint
-        console.log('Fetching user info from OIDC endpoint...');
-        const userInfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
-          }
-        });
-
-        if (!userInfoResponse.ok) {
-          console.error('User info request failed:', {
-            status: userInfoResponse.status,
-            error: await userInfoResponse.text()
-          });
-          return done(new Error('Failed to fetch user info'));
-        }
-
-        const userInfo = await userInfoResponse.json();
-        console.log('Successfully retrieved user info:', {
-          hasEmail: !!userInfo.email,
-          hasSub: !!userInfo.sub
-        });
-
-        // Extract email from userInfo or fallback
-        const email = userInfo.email || profile?.emails?.[0]?.value || `${userInfo.sub}@linkedin.user`;
+        const email = profile.emails?.[0]?.value || `${profile.id}@linkedin.user`;
         console.log('Looking up user by email:', email);
         let user = await storage.getUserByEmail(email);
 
