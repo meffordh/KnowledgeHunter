@@ -105,17 +105,17 @@ export function setupAuth(app: Express) {
       try {
         console.log('LinkedIn auth callback received:', {
           profileId: profile.id,
-          hasEmails: !!profile.emails?.length,
-          accessToken: !!accessToken,
-          headers: profile._json
+          hasToken: !!accessToken,
+          tokenLength: accessToken?.length
         });
 
-        // Fetch user info from LinkedIn's v2 userinfo endpoint
+        // Fetch user info from LinkedIn's userinfo endpoint
         console.log('Fetching userinfo from LinkedIn...');
         const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'x-li-format': 'json'
           }
         });
 
@@ -127,21 +127,22 @@ export function setupAuth(app: Express) {
             error: errorText,
             headers: Object.fromEntries(userinfoResponse.headers.entries())
           });
-          return done(new Error('Failed to fetch user information from LinkedIn'));
+          return done(new Error(`Failed to fetch user information from LinkedIn: ${userinfoResponse.status} ${userinfoResponse.statusText}`));
         }
 
         const userInfo = await userinfoResponse.json();
         console.log('LinkedIn userinfo received:', {
+          hasName: !!userInfo.name,
           hasEmail: !!userInfo.email,
-          scopes: userInfo.scope,
           sub: userInfo.sub,
-          responseData: JSON.stringify(userInfo)
+          fields: Object.keys(userInfo)
         });
 
-        const email = userInfo.email;
+        // Handle optional email field as mentioned in docs
+        const email = userInfo.email || `${userInfo.sub}@linkedin.user`;
         if (!email) {
-          console.error('No email provided in userinfo:', userInfo);
-          return done(new Error('No email provided by LinkedIn'));
+          console.error('No email or sub provided in userinfo:', userInfo);
+          return done(new Error('No identifier provided by LinkedIn'));
         }
 
         console.log('Looking up user by email:', email);
