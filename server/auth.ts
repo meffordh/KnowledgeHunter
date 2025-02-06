@@ -1,9 +1,8 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import express from 'express';
-import { Auth } from '@auth/express';
-const auth = Auth;
-import LinkedIn from '@auth/core/providers/linkedin';
+import { auth } from "@auth/core";
+import LinkedIn from "@auth/core/providers/linkedin";
 import { storage } from "./storage";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -43,11 +42,6 @@ router.use(
       LinkedIn({
         clientId: process.env.AUTH_LINKEDIN_ID || '',
         clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
-        authorization: {
-          params: {
-            scope: 'openid profile email'
-          }
-        }
       }),
     ],
     secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
