@@ -1,8 +1,8 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import express from 'express';
-import { Auth } from '@auth/express';
-import LinkedInProvider from '@auth/core/providers/linkedin';
+import { auth } from '@auth/express';
+import LinkedIn from '@auth/core/providers/linkedin';
 import { storage } from "./storage";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -37,9 +37,9 @@ const router = express.Router();
 // Configure Auth.js with the LinkedIn provider
 router.use(
   '/',
-  Auth({
+  auth({
     providers: [
-      LinkedInProvider({
+      LinkedIn({
         clientId: process.env.AUTH_LINKEDIN_ID || '',
         clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
         authorization: {
@@ -252,7 +252,7 @@ export function setupAuth(app: express.Express) {
 
   // User endpoint from edited code
   app.get("/api/user", async (req, res) => {
-    const session = await Auth.getSession(req);
+    const session = await auth.getSession(req);
     if (!session?.user?.email) {
       return res.sendStatus(401);
     }
