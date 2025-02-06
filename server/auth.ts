@@ -107,6 +107,9 @@ export function setupAuth(app: Express) {
           hasToken: !!accessToken,
           tokenLength: accessToken?.length,
           profile: profile ? 'exists' : 'undefined'
+          hasToken: !!accessToken,
+          tokenLength: accessToken?.length,
+          profile: profile ? 'exists' : 'undefined'
         });
 
         const email = profile.emails?.[0]?.value || `${profile.id}@linkedin.user`;
