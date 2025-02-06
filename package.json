@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.9",
+    "@auth/core": "^0.37.4",
+    "@auth/express": "^0.8.4",
     "@hookform/resolvers": "^3.9.1",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@mendable/firecrawl-js": "^1.16.0",
@@ -58,6 +60,7 @@
     "framer-motion": "^11.13.1",
     "input-otp": "^1.2.4",
     "js-tiktoken": "^1.0.18",
+    "linkedin": "link:@auth/core/providers/linkedin",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
     "node-fetch": "^3.3.2",

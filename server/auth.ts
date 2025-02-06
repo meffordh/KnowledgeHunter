@@ -1,15 +1,14 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as LinkedInStrategy } from 'passport-linkedin-oauth2';
-import { Express } from "express";
+import express from 'express';
+import { Auth } from '@auth/express';
+import LinkedInProvider from '@auth/core/providers/linkedin';
+import { storage } from "./storage";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
 import { pool } from "./db";
 import connectPg from "connect-pg-simple";
-import fetch from "node-fetch";
 
 declare global {
   namespace Express {
@@ -33,8 +32,63 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
-export function setupAuth(app: Express) {
+const router = express.Router();
+
+// Configure Auth.js with the LinkedIn provider
+router.use(
+  '/',
+  Auth({
+    providers: [
+      LinkedInProvider({
+        clientId: process.env.AUTH_LINKEDIN_ID || '',
+        clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
+        authorization: {
+          params: {
+            scope: 'openid profile email'
+          }
+        }
+      }),
+    ],
+    secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
+    session: { strategy: 'jwt' },
+    callbacks: {
+      async signIn({ user, account, profile }) {
+        if (!profile?.email) {
+          return false;
+        }
+
+        // Find or create user in our database
+        let dbUser = await storage.getUserByEmail(profile.email);
+        if (!dbUser) {
+          dbUser = await storage.createUser({
+            email: profile.email,
+            password: '' // We don't need password for OAuth users
+          });
+        }
+
+        return true;
+      },
+      async session({ session, token }) {
+        if (session.user?.email) {
+          const dbUser = await storage.getUserByEmail(session.user.email);
+          if (dbUser) {
+            session.user.id = dbUser.id;
+            session.user.researchCount = dbUser.researchCount;
+          }
+        }
+        return session;
+      }
+    },
+    pages: {
+      signIn: '/auth',
+      error: '/auth'
+    },
+  })
+);
+
+export function setupAuth(app: express.Express) {
   console.log('Setting up authentication...');
+  app.use('/api/auth', router);
 
   const sessionStore = new PostgresSessionStore({
     pool,
@@ -88,104 +142,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
-    console.log('Setting up LinkedIn authentication strategy');
-
-    const callbackURL = 'https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback';
-    console.log('LinkedIn callback URL:', callbackURL);
-
-    passport.use(new LinkedInStrategy({
-      clientID: process.env.LINKEDIN_CLIENT_ID,
-      clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
-      callbackURL,
-      scope: ['openid', 'profile', 'email'],
-      state: true,
-      proxy: true,
-      profileURL: 'https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))'
-    }, async (accessToken, refreshToken, profile, done) => {
-      try {
-        console.log('LinkedIn auth callback received:', {
-          hasToken: !!accessToken,
-          tokenLength: accessToken?.length,
-          profile: profile ? 'exists' : 'undefined'
-        });
-
-        const email = profile.emails?.[0]?.value || `${profile.id}@linkedin.user`;
-        console.log('Looking up user by email:', email);
-        let user = await storage.getUserByEmail(email);
-
-        if (!user) {
-          console.log('Creating new user for email:', email);
-          const randomPassword = randomBytes(16).toString('hex');
-          const hashedPassword = await hashPassword(randomPassword);
-          user = await storage.createUser({
-            email,
-            password: hashedPassword
-          });
-          console.log('Created new user:', user.id);
-        } else {
-          console.log('Found existing user:', user.id);
-        }
-
-        return done(null, user);
-      } catch (error) {
-        console.error('LinkedIn authentication error:', error);
-        return done(error);
-      }
-    }));
-
-    // LinkedIn auth routes
-    app.get('/api/auth/linkedin', (req, res, next) => {
-      console.log('LinkedIn auth request received', {
-        session: req.session,
-        sessionID: req.sessionID
-      });
-      passport.authenticate('linkedin')(req, res, next);
-    });
-
-    app.get('/api/auth/linkedin/callback', (req, res, next) => {
-      console.log('LinkedIn callback received:', {
-        query: req.query,
-        hasSession: !!req.session,
-        sessionID: req.sessionID
-      });
-
-      if (req.query.error) {
-        console.error('LinkedIn auth error:', req.query);
-        return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
-      }
-
-      passport.authenticate('linkedin', (err, user, info) => {
-        console.log('LinkedIn authentication result:', {
-          hasError: !!err,
-          hasUser: !!user,
-          info: info
-        });
-
-        if (err) {
-          console.error('Authentication error:', err);
-          return res.redirect(`/auth?error=${encodeURIComponent(err.message)}`);
-        }
-
-        if (!user) {
-          console.log('Authentication failed:', info);
-          return res.redirect('/auth?error=Authentication failed');
-        }
-
-        req.login(user, (loginErr) => {
-          if (loginErr) {
-            console.error('Login error:', loginErr);
-            return res.redirect(`/auth?error=${encodeURIComponent(loginErr.message)}`);
-          }
-
-          console.log('Successfully logged in user:', user.id);
-          res.redirect('/');
-        });
-      })(req, res, next);
-    });
-  } else {
-    console.warn('LinkedIn credentials not found, LinkedIn authentication will not be available');
-  }
 
   // Local Strategy
   passport.use(
@@ -294,15 +250,24 @@ export function setupAuth(app: Express) {
     });
   });
 
-  app.get("/api/user", (req, res) => {
-    console.log('User request received, authenticated:', req.isAuthenticated());
-    if (!req.isAuthenticated()) {
+  // User endpoint from edited code
+  app.get("/api/user", async (req, res) => {
+    const session = await Auth.getSession(req);
+    if (!session?.user?.email) {
       return res.sendStatus(401);
     }
+
+    const user = await storage.getUserByEmail(session.user.email);
+    if (!user) {
+      return res.sendStatus(401);
+    }
+
     res.json({
-      id: req.user.id,
-      email: req.user.email,
-      researchCount: req.user.researchCount
+      id: user.id,
+      email: user.email,
+      researchCount: user.researchCount
     });
   });
 }
+
+import { User as SelectUser } from "@shared/schema";

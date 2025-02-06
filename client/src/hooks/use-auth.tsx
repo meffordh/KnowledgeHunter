@@ -33,12 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
-      const res = await apiRequest("POST", "/api/login", credentials);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
-      return data;
+      window.location.href = '/api/auth/signin/linkedin';
+      return null;
     },
     onSuccess: (user: SelectUser) => {
       queryClient.setQueryData(["/api/user"], user);

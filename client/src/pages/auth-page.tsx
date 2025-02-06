@@ -65,7 +65,7 @@ export default function AuthPage() {
   };
 
   const handleLinkedInLogin = () => {
-    window.location.href = '/api/auth/linkedin';
+    window.location.href = '/api/auth/signin/linkedin';
   };
 
   return (
