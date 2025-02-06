@@ -168,81 +168,82 @@ export function setupAuth(app: Express) {
         return done(error);
       }
     }));
+
+    // LinkedIn auth routes with improved logging
+    app.get('/api/auth/linkedin',
+      (req, res, next) => {
+        console.log('LinkedIn auth request received', {
+          session: req.session,
+          sessionID: req.sessionID
+        });
+        passport.authenticate('linkedin', {
+          state: true,
+          scope: ['openid', 'profile', 'email']
+        })(req, res, next);
+      }
+    );
+
+    app.get('/api/auth/linkedin/callback',
+      (req, res, next) => {
+        console.log('LinkedIn callback received:', {
+          query: req.query,
+          hasSession: !!req.session,
+          sessionID: req.sessionID,
+          headers: req.headers
+        });
+
+        if (req.query.error) {
+          console.error('LinkedIn auth error:', {
+            error: req.query.error,
+            description: req.query.error_description
+          });
+          return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
+        }
+
+        passport.authenticate('linkedin', (err, user, info) => {
+          console.log('LinkedIn authentication result:', {
+            hasError: !!err,
+            hasUser: !!user,
+            info,
+            session: req.session
+          });
+
+          if (err) {
+            console.error('Authentication error:', err);
+            return res.redirect(`/auth?error=${encodeURIComponent(err.message)}`);
+          }
+
+          if (!user) {
+            console.log('Authentication failed:', info);
+            return res.redirect('/auth?error=Authentication failed');
+          }
+
+          req.login(user, (loginErr) => {
+            if (loginErr) {
+              console.error('Login error:', loginErr);
+              return res.redirect(`/auth?error=${encodeURIComponent(loginErr.message)}`);
+            }
+
+            console.log('Successfully logged in user:', user.id);
+
+            // Save session before redirect
+            req.session.save((err) => {
+              if (err) {
+                console.error('Session save error:', err);
+                return res.redirect('/auth?error=Session save failed');
+              }
+              console.log('Session saved successfully, redirecting to home page');
+              res.redirect('/');
+            });
+          });
+        })(req, res, next);
+      }
+    );
   } else {
     console.warn('LinkedIn credentials not found, LinkedIn authentication will not be available');
   }
 
-  // LinkedIn auth routes
-  app.get('/api/auth/linkedin',
-    (req, res, next) => {
-      console.log('LinkedIn auth request received', {
-        session: req.session,
-        sessionID: req.sessionID
-      });
-      passport.authenticate('linkedin', {
-        state: true,
-        scope: ['openid', 'profile', 'email']
-      })(req, res, next);
-    }
-  );
-
-  app.get('/api/auth/linkedin/callback',
-    (req, res, next) => {
-      console.log('LinkedIn callback received:', {
-        query: req.query,
-        hasSession: !!req.session,
-        sessionID: req.sessionID,
-        headers: req.headers
-      });
-
-      if (req.query.error) {
-        console.error('LinkedIn auth error:', {
-          error: req.query.error,
-          description: req.query.error_description
-        });
-        return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
-      }
-
-      passport.authenticate('linkedin', (err, user, info) => {
-        console.log('LinkedIn authentication result:', {
-          hasError: !!err,
-          hasUser: !!user,
-          info,
-          session: req.session
-        });
-
-        if (err) {
-          console.error('Authentication error:', err);
-          return res.redirect(`/auth?error=${encodeURIComponent(err.message)}`);
-        }
-
-        if (!user) {
-          console.log('Authentication failed:', info);
-          return res.redirect('/auth?error=Authentication failed');
-        }
-
-        req.login(user, (loginErr) => {
-          if (loginErr) {
-            console.error('Login error:', loginErr);
-            return res.redirect(`/auth?error=${encodeURIComponent(loginErr.message)}`);
-          }
-
-          console.log('Successfully logged in user:', user.id);
-
-          // Save session before redirect
-          req.session.save((err) => {
-            if (err) {
-              console.error('Session save error:', err);
-              return res.redirect('/auth?error=Session save failed');
-            }
-            console.log('Session saved successfully, redirecting to home page');
-            res.redirect('/');
-          });
-        });
-      })(req, res, next);
-    }
-  );
-
+  // Local Strategy (remains unchanged)
   passport.use(
     new LocalStrategy(
       { usernameField: 'email' },
