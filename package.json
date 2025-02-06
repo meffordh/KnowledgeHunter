@@ -105,5 +105,10 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "pnpm": {
+    "overrides": {
+      "passport-linkedin-oauth2": "patch:./patches/passport-linkedin-oauth2@2.0.0.patch"
+    }
   }
 }
