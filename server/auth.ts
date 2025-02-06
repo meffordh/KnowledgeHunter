@@ -8,6 +8,8 @@ export function setupAuth(app: express.Express) {
   const router = express.Router();
 
   const auth = Auth({
+    debug: false,
+    basePath: "/api/auth",
     providers: [
       LinkedIn({
         clientId: process.env.AUTH_LINKEDIN_ID || '',
@@ -46,13 +48,13 @@ export function setupAuth(app: express.Express) {
     }
   });
 
-  router.use("/", auth.handleRequest());
-  app.use("/api/auth", router);
+  app.use("/api/auth", auth.handleRequest());
 
-  app.get("/api/user", auth.authenticateRequest(), async (req, res) => {
-    if (!req.auth?.user) {
+  app.get("/api/user", async (req, res) => {
+    const session = await auth.validateRequest(req);
+    if (!session?.user) {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    res.json(req.auth.user);
+    res.json(session.user);
   });
 }
