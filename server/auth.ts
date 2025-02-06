@@ -11,8 +11,8 @@ export function setupAuth(app: express.Express) {
     trustHost: true,
     providers: [
       LinkedIn({
-        clientId: process.env.AUTH_LINKEDIN_ID || '',
-        clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
+        clientId: process.env.AUTH_LINKEDIN_CLIENT_ID || '',
+        clientSecret: process.env.AUTH_LINKEDIN_CLIENT_SECRET || '',
         authorization: {
           params: {
             scope: "openid profile email"
