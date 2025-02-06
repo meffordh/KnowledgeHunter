@@ -101,7 +101,7 @@ export function setupAuth(app: Express) {
       scope: ['openid', 'profile', 'email'],
       state: true,
       proxy: true,
-      profileURL: 'https://api.linkedin.com/v2/me?projection=(id,firstName,lastName,profilePicture(displayImage~:playableStreams))'
+      profileURL: 'https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))'
     }, async (accessToken, refreshToken, profile, done) => {
       try {
         console.log('LinkedIn auth callback received:', {
