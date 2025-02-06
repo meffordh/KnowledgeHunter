@@ -92,7 +92,12 @@ export function setupAuth(app: Express) {
   if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
     console.log('Setting up LinkedIn authentication strategy');
 
-    const callbackURL = `${process.env.REPL_SLUG ? 'https://' : 'http://'}${app.get('host') || 'localhost:5000'}/api/auth/linkedin/callback`;
+    const host = process.env.REPL_SLUG ? 
+      `${process.env.REPL_SLUG}.replit.app` : 
+      app.get('host') || 'localhost:5000';
+
+    const protocol = process.env.REPL_SLUG ? 'https' : 'http';
+    const callbackURL = `${protocol}://${host}/api/auth/linkedin/callback`;
     console.log('LinkedIn callback URL:', callbackURL);
 
     passport.use(new LinkedInStrategy({
@@ -256,7 +261,6 @@ export function setupAuth(app: Express) {
       }
     )
   );
-
 
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
