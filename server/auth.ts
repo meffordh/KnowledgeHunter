@@ -1,5 +1,5 @@
 import { Auth } from "@auth/core";
-import { LinkedIn } from "@auth/core/providers/linkedin";
+import LinkedIn from "@auth/core/providers/linkedin";
 import express from "express";
 import { storage } from "./storage";
 
