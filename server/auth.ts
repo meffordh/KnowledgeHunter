@@ -98,7 +98,7 @@ export function setupAuth(app: Express) {
       clientID: process.env.LINKEDIN_CLIENT_ID,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
       callbackURL,
-      scope: ['openid', 'profile', 'email', 'w_member_social'],
+      scope: ['openid', 'profile', 'email'],
       state: true,
       proxy: true
     }, async (accessToken, refreshToken, profile, done) => {
@@ -109,65 +109,31 @@ export function setupAuth(app: Express) {
           profile: profile ? 'exists' : 'undefined'
         });
 
-        // Fetch LinkedIn profile
-        console.log('Fetching LinkedIn profile...');
-        const profileResponse = await fetch('https://api.linkedin.com/v2/me', {
+        // Fetch user info using OIDC endpoint
+        console.log('Fetching user info from OIDC endpoint...');
+        const userInfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
-            'Accept': 'application/json',
-            'X-Restli-Protocol-Version': '2.0.0',
-            'LinkedIn-Version': '202402'
+            'Accept': 'application/json'
           }
         });
 
-        // Fetch LinkedIn email
-        console.log('Fetching LinkedIn email...');
-        const emailResponse = await fetch(
-          'https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))',
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Accept': 'application/json',
-              'X-Restli-Protocol-Version': '2.0.0',
-              'LinkedIn-Version': '202402'
-            }
-          }
-        );
-
-        let profileData = null;
-        let emailData = null;
-
-        if (profileResponse.ok) {
-          profileData = await profileResponse.json();
-          console.log('Successfully retrieved profile:', {
-            hasId: !!profileData.id,
+        if (!userInfoResponse.ok) {
+          console.error('User info request failed:', {
+            status: userInfoResponse.status,
+            error: await userInfoResponse.text()
           });
-        } else {
-          console.error('Profile request failed:', {
-            status: profileResponse.status,
-            error: await profileResponse.text()
-          });
+          return done(new Error('Failed to fetch user info'));
         }
 
-        if (emailResponse.ok) {
-          emailData = await emailResponse.json();
-          console.log('Successfully retrieved email data');
-        } else {
-          console.error('Email request failed:', {
-            status: emailResponse.status,
-            error: await emailResponse.text()
-          });
-        }
+        const userInfo = await userInfoResponse.json();
+        console.log('Successfully retrieved user info:', {
+          hasEmail: !!userInfo.email,
+          hasSub: !!userInfo.sub
+        });
 
-        // If both requests fail, return error
-        if (!profileData && !emailData) {
-          return done(new Error('Failed to fetch user profile and email'));
-        }
-
-        // Extract email from response or fallback
-        const email = emailData?.elements?.[0]?.['handle~']?.emailAddress
-          || profile?.emails?.[0]?.value
-          || `${profileData?.id || 'unknown'}@linkedin.user`;
+        // Extract email from userInfo or fallback
+        const email = userInfo.email || profile?.emails?.[0]?.value || `${userInfo.sub}@linkedin.user`;
         console.log('Looking up user by email:', email);
         let user = await storage.getUserByEmail(email);
 
