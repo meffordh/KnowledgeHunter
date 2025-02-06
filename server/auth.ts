@@ -8,7 +8,9 @@ export function setupAuth(app: express.Express) {
   const router = express.Router();
 
   const auth = Auth({
-    debug: false,
+    debug: true,
+    secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
+    trustHost: true,
     basePath: "/api/auth",
     providers: [
       LinkedIn({
