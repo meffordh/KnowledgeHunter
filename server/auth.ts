@@ -52,10 +52,15 @@ export function setupAuth(app: express.Express) {
   app.use("/api/auth", router);
 
   app.get("/api/user", async (req, res) => {
-    const session = await Auth.getSession(req);
-    if (!session?.user) {
+    const authRequest = req.headers.authorization?.split(" ")[1];
+    if (!authRequest) {
       return res.status(401).json({ error: "Not authenticated" });
     }
-    res.json(session.user);
+    try {
+      const session = await Auth.validateAuthorizationToken(authRequest);
+      res.json(session.user);
+    } catch (error) {
+      res.status(401).json({ error: "Invalid session" });
+    }
   });
 }
