@@ -1,5 +1,4 @@
-
-import { Auth } from "@auth/core";
+import { Auth } from "@auth/express";
 import LinkedIn from "@auth/core/providers/linkedin";
 import express from "express";
 import { storage } from "./storage";
@@ -7,14 +6,9 @@ import { storage } from "./storage";
 export function setupAuth(app: express.Express) {
   const router = express.Router();
 
-  const auth = Auth({
-    debug: true,
+  Auth.create({
     secret: process.env.AUTH_SECRET || process.env.REPLIT_ID || 'development-secret',
     trustHost: true,
-    session: {
-      strategy: 'jwt',
-      maxAge: 30 * 24 * 60 * 60 // 30 days
-    },
     providers: [
       LinkedIn({
         clientId: process.env.AUTH_LINKEDIN_ID || '',
@@ -26,6 +20,9 @@ export function setupAuth(app: express.Express) {
         }
       })
     ],
+    session: {
+      strategy: "jwt"
+    },
     callbacks: {
       async jwt({ token, user, account }) {
         if (account) {
@@ -62,11 +59,12 @@ export function setupAuth(app: express.Express) {
         }
       }
     }
-  });
+  }).use(app);
 
-  app.use("/api/auth", auth.handleRequest());
+  return router;
+}
 
-  app.get("/api/user", async (req, res) => {
+app.get("/api/user", async (req, res) => {
     const session = await auth.validateRequest(req);
     if (!session?.user) {
       return res.status(401).json({ error: "Not authenticated" });
