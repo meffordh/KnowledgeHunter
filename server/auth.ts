@@ -121,7 +121,12 @@ export function setupAuth(app: Express) {
 
         if (!userinfoResponse.ok) {
           const errorText = await userinfoResponse.text();
-          console.error('Failed to fetch userinfo:', errorText);
+          console.error('Failed to fetch userinfo:', {
+            status: userinfoResponse.status,
+            statusText: userinfoResponse.statusText,
+            error: errorText,
+            headers: Object.fromEntries(userinfoResponse.headers.entries())
+          });
           return done(new Error('Failed to fetch user information from LinkedIn'));
         }
 
@@ -129,12 +134,13 @@ export function setupAuth(app: Express) {
         console.log('LinkedIn userinfo received:', {
           hasEmail: !!userInfo.email,
           scopes: userInfo.scope,
-          sub: userInfo.sub
+          sub: userInfo.sub,
+          responseData: JSON.stringify(userInfo)
         });
 
         const email = userInfo.email;
         if (!email) {
-          console.error('No email provided in userinfo');
+          console.error('No email provided in userinfo:', userInfo);
           return done(new Error('No email provided by LinkedIn'));
         }
 
