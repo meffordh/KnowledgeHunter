@@ -1,7 +1,8 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import express from 'express';
-import { Auth } from '@auth/express';
+import Express from '@auth/express';
+const Auth = Express.Auth;
 import LinkedInProvider from '@auth/core/providers/linkedin';
 import { storage } from "./storage";
 import session from "express-session";
