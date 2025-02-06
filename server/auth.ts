@@ -95,132 +95,83 @@ export function setupAuth(app: Express) {
     console.log('LinkedIn callback URL:', callbackURL);
 
     passport.use(new LinkedInStrategy({
-          clientID: process.env.LINKEDIN_CLIENT_ID,
-          clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
-          callbackURL,
-          scope: ['openid', 'profile', 'email', 'w_member_social'],
-          state: true,
-          proxy: true
-        }, async (accessToken, refreshToken, profile, done) => {
-          try {
-            console.log('LinkedIn auth callback received:', {
-              hasToken: !!accessToken,
-              tokenLength: accessToken?.length
-            });
+      clientID: process.env.LINKEDIN_CLIENT_ID,
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
+      callbackURL,
+      scope: ['openid', 'profile', 'email'],
+      state: true,
+      proxy: true
+    }, async (accessToken, refreshToken, profile, done) => {
+      try {
+        console.log('LinkedIn auth callback received:', {
+          hasToken: !!accessToken,
+          tokenLength: accessToken?.length
+        });
 
-            // Try multiple endpoints in sequence until we get valid user data
-            let userInfo;
-            let userEmail;
-
-            // 1. Try OpenID Connect userinfo endpoint
-            console.log('Trying OpenID Connect userinfo endpoint...');
-            const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'x-li-format': 'json',
-                'X-Restli-Protocol-Version': '2.0.0'
-              }
-            });
-
-            if (userinfoResponse.ok) {
-              userInfo = await userinfoResponse.json();
-              userEmail = userInfo.email;
-              console.log('Successfully retrieved user info from OpenID endpoint');
-            } else {
-              console.log('OpenID userinfo endpoint failed:', await userinfoResponse.text());
-
-              // 2. Try v2 /me endpoint with specific fields
-              console.log('Trying /v2/me endpoint...');
-              const meResponse = await fetch('https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture)', {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                  'x-li-format': 'json',
-                  'X-Restli-Protocol-Version': '2.0.0',
-                  'LinkedIn-Version': '202402'
-                }
-              });
-
-              if (meResponse.ok) {
-                const meData = await meResponse.json();
-                console.log('Retrieved profile data:', { hasId: !!meData.id });
-
-                // 3. Try email endpoint
-                console.log('Trying email endpoint...');
-                const emailResponse = await fetch('https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))', {
-                  headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'x-li-format': 'json',
-                    'X-Restli-Protocol-Version': '2.0.0',
-                    'LinkedIn-Version': '202402'
-                  }
-                });
-
-                if (emailResponse.ok) {
-                  const emailData = await emailResponse.json();
-                  userEmail = emailData?.elements?.[0]?.['handle~']?.emailAddress;
-                  userInfo = {
-                    ...meData,
-                    email: userEmail
-                  };
-                } else {
-                  console.log('Email endpoint failed:', await emailResponse.text());
-                  // Use ID as fallback
-                  userEmail = `${meData.id}@linkedin.user`;
-                  userInfo = meData;
-                }
-              } else {
-                console.error('Failed to fetch profile:', await meResponse.text());
-                return done(new Error('Failed to fetch user profile from all available endpoints'));
-              }
-            }
-
-            if (!userEmail) {
-              console.error('No email could be retrieved');
-              return done(new Error('Could not retrieve user email'));
-            }
-
-            // Look up or create user
-            console.log('Looking up user by email:', userEmail);
-            let user = await storage.getUserByEmail(userEmail);
-
-            if (!user) {
-              console.log('Creating new user for email:', userEmail);
-              const randomPassword = randomBytes(16).toString('hex');
-              const hashedPassword = await hashPassword(randomPassword);
-
-              user = await storage.createUser({
-                email: userEmail,
-                password: hashedPassword
-              });
-              console.log('Created new user:', user.id);
-            } else {
-              console.log('Found existing user:', user.id);
-            }
-
-            return done(null, user);
-          } catch (error) {
-            console.error('LinkedIn auth error:', error);
-            return done(error);
+        // Using the OpenID Connect userinfo endpoint as the primary source
+        console.log('Fetching user info from OpenID Connect endpoint...');
+        const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache',
+            'X-Restli-Protocol-Version': '2.0.0',
+            'LinkedIn-Version': '202402'
           }
-        }));
+        });
 
-    // LinkedIn auth routes with improved logging
+        if (!userinfoResponse.ok) {
+          const errorText = await userinfoResponse.text();
+          console.error('OpenID Connect userinfo request failed:', {
+            status: userinfoResponse.status,
+            error: errorText,
+            headers: userinfoResponse.headers
+          });
+          return done(new Error(`Failed to fetch user information: ${errorText}`));
+        }
+
+        const userInfo = await userinfoResponse.json();
+        console.log('Successfully retrieved user info:', {
+          hasEmail: !!userInfo.email,
+          hasSub: !!userInfo.sub
+        });
+
+        // Use email or create a fallback email using the sub claim
+        const email = userInfo.email || `${userInfo.sub}@linkedin.user`;
+
+        // Look up or create user
+        console.log('Looking up user by email:', email);
+        let user = await storage.getUserByEmail(email);
+
+        if (!user) {
+          console.log('Creating new user for email:', email);
+          const randomPassword = randomBytes(16).toString('hex');
+          const hashedPassword = await hashPassword(randomPassword);
+
+          user = await storage.createUser({
+            email: email,
+            password: hashedPassword
+          });
+          console.log('Created new user:', user.id);
+        } else {
+          console.log('Found existing user:', user.id);
+        }
+
+        return done(null, user);
+      } catch (error) {
+        console.error('LinkedIn authentication error:', error);
+        return done(error);
+      }
+    }));
+
+    // LinkedIn auth routes
     app.get('/api/auth/linkedin',
       (req, res, next) => {
         console.log('LinkedIn auth request received', {
           session: req.session,
           sessionID: req.sessionID
         });
-        passport.authenticate('linkedin', {
-          state: true,
-          scope: ['openid', 'profile', 'email', 'w_member_social']
-        })(req, res, next);
+        passport.authenticate('linkedin')(req, res, next);
       }
     );
 
@@ -230,14 +181,10 @@ export function setupAuth(app: Express) {
           query: req.query,
           hasSession: !!req.session,
           sessionID: req.sessionID,
-          headers: req.headers
         });
 
         if (req.query.error) {
-          console.error('LinkedIn auth error:', {
-            error: req.query.error,
-            description: req.query.error_description
-          });
+          console.error('LinkedIn auth error:', req.query);
           return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
         }
 
@@ -245,8 +192,7 @@ export function setupAuth(app: Express) {
           console.log('LinkedIn authentication result:', {
             hasError: !!err,
             hasUser: !!user,
-            info,
-            session: req.session
+            info
           });
 
           if (err) {
@@ -266,16 +212,7 @@ export function setupAuth(app: Express) {
             }
 
             console.log('Successfully logged in user:', user.id);
-
-            // Save session before redirect
-            req.session.save((err) => {
-              if (err) {
-                console.error('Session save error:', err);
-                return res.redirect('/auth?error=Session save failed');
-              }
-              console.log('Session saved successfully, redirecting to home page');
-              res.redirect('/');
-            });
+            res.redirect('/');
           });
         })(req, res, next);
       }
