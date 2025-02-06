@@ -1,0 +1,200 @@
+2025-02-05 20:54:29.44
+90724839
+User
+1:54:29 AM [express] GET /api/user 401 in 2ms
+2025-02-05 20:55:19.07
+275fdba3
+System
+starting up user application
+2025-02-05 20:55:19.31
+275fdba3
+System
+forwarding local port 5000 to external port 80
+2025-02-05 20:55:21.45
+275fdba3
+User
+> rest-express@1.0.0 start
+2025-02-05 20:55:21.45
+275fdba3
+User
+> NODE_ENV=production node dist/index.js
+2025-02-05 20:55:23.55
+275fdba3
+User
+Setting up authentication...
+2025-02-05 20:55:23.55
+275fdba3
+User
+Setting up LinkedIn authentication strategy
+2025-02-05 20:55:23.55
+275fdba3
+User
+LinkedIn callback URL: https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback
+2025-02-05 20:55:23.73
+275fdba3
+User
+1:55:23 AM [express] serving on port 5000
+2025-02-05 20:55:26.21
+275fdba3
+User
+User request received, authenticated: false
+2025-02-05 20:55:26.22
+275fdba3
+User
+1:55:26 AM [express] GET /api/user 401 in 5ms
+2025-02-05 20:55:30.54
+275fdba3
+User
+User request received, authenticated: false
+2025-02-05 20:55:30.54
+275fdba3
+User
+1:55:30 AM [express] GET /api/user 401 in 2ms
+2025-02-05 20:55:36.15
+275fdba3
+User
+User request received, authenticated: false
+2025-02-05 20:55:36.15
+275fdba3
+User
+1:55:36 AM [express] GET /api/user 401 in 2ms
+2025-02-05 20:55:47.02
+275fdba3
+User
+LinkedIn auth request received {
+2025-02-05 20:55:47.02
+275fdba3
+User
+session: Session {
+2025-02-05 20:55:47.02
+275fdba3
+User
+cookie: {
+2025-02-05 20:55:47.02
+275fdba3
+User
+path: '/',
+2025-02-05 20:55:47.02
+275fdba3
+User
+_expires: 2025-02-07T01:55:47.024Z,
+2025-02-05 20:55:47.02
+275fdba3
+User
+originalMaxAge: 86400000,
+2025-02-05 20:55:47.02
+275fdba3
+User
+httpOnly: true,
+2025-02-05 20:55:47.02
+275fdba3
+User
+secure: true,
+2025-02-05 20:55:47.02
+275fdba3
+User
+sameSite: 'lax'
+2025-02-05 20:55:47.02
+275fdba3
+User
+}
+2025-02-05 20:55:47.02
+275fdba3
+User
+},
+2025-02-05 20:55:47.02
+275fdba3
+User
+sessionID: 'TVVyIsrhK9UmD8JsRcCYus2I9Uj8SfCl'
+2025-02-05 20:55:47.02
+275fdba3
+User
+}
+2025-02-05 20:55:49.74
+275fdba3
+User
+1:55:49 AM [express] GET /api/auth/linkedin 302 in 2718ms
+2025-02-05 20:56:26.67
+275fdba3
+User
+LinkedIn callback received: {
+2025-02-05 20:56:26.67
+275fdba3
+User
+query: {
+2025-02-05 20:56:26.67
+275fdba3
+User
+code: 'AQSimm1W6LVBZ4Ch7v9x-7rMp2m6pZCQutQTVd5ngomblqahcBedCgx6_tfKZ5rkAfP1t8NVy7clygEEwwRI4d4Nc6L2_nlYzrEkFjtIiGrLt0obT_rURXj_RGBhemrNANeZA5kYZ3f2C5NO_GJPd7K3Q2W7aMeRIJBPslbYdkTzz-mBoShV7pEiOJZvde8gOQ3vozR1vHDRlEuyzrU',
+2025-02-05 20:56:26.67
+275fdba3
+User
+state: '90eCHmxJATetZ1DE0HXiaGag'
+2025-02-05 20:56:26.67
+275fdba3
+User
+},
+2025-02-05 20:56:26.67
+275fdba3
+User
+hasSession: true,
+2025-02-05 20:56:26.67
+275fdba3
+User
+sessionID: 'TVVyIsrhK9UmD8JsRcCYus2I9Uj8SfCl',
+2025-02-05 20:56:26.67
+275fdba3
+User
+headers: {
+2025-02-05 20:56:26.67
+275fdba3
+User
+host: 'deep-research-web-interface-meffordh.replit.app',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+2025-02-05 20:56:26.67
+275fdba3
+User
+accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'accept-encoding': 'gzip, deflate, br, zstd',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'accept-language': 'en-US,en;q=0.9',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'cache-control': 'max-age=0',
+2025-02-05 20:56:26.67
+275fdba3
+User
+cookie: 'researchhunter.sid=s%3ATVVyIsrhK9UmD8JsRcCYus2I9Uj8SfCl.gpSV4AEsvUY9Wx9GJ1lIsIVsAREogbQKqhJD8KNMmBg',
+2025-02-05 20:56:26.67
+275fdba3
+User
+priority: 'u=0, i',
+2025-02-05 20:56:26.67
+275fdba3
+User
+referer: 'https://www.linkedin.com/',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'sec-ch-ua': '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'sec-ch-ua-mobile': '?0',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'sec-ch-ua-platform': '"Windows"',
+2025-02-05 20:56:26.67
+275fdba3
+User
+'sec-fetch-dest': 'document',
