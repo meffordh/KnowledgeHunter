@@ -104,7 +104,6 @@ export function setupAuth(app: Express) {
         }, async (accessToken, refreshToken, profile, done) => {
           try {
             console.log('LinkedIn auth callback received:', {
-              profileId: profile.id,
               hasToken: !!accessToken,
               tokenLength: accessToken?.length
             });
@@ -132,15 +131,16 @@ export function setupAuth(app: Express) {
             } else {
               console.log('OpenID userinfo endpoint failed:', await userinfoResponse.text());
 
-              // 2. Try v2 /me endpoint
+              // 2. Try v2 /me endpoint with specific fields
               console.log('Trying /v2/me endpoint...');
-              const meResponse = await fetch('https://api.linkedin.com/v2/me?projection=(id,firstName,lastName,profilePicture(displayImage~:playableStreams))', {
+              const meResponse = await fetch('https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture)', {
                 headers: {
                   'Authorization': `Bearer ${accessToken}`,
                   'Accept': 'application/json',
                   'Content-Type': 'application/json',
                   'x-li-format': 'json',
-                  'X-Restli-Protocol-Version': '2.0.0'
+                  'X-Restli-Protocol-Version': '2.0.0',
+                  'LinkedIn-Version': '202402'
                 }
               });
 
@@ -156,7 +156,8 @@ export function setupAuth(app: Express) {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                     'x-li-format': 'json',
-                    'X-Restli-Protocol-Version': '2.0.0'
+                    'X-Restli-Protocol-Version': '2.0.0',
+                    'LinkedIn-Version': '202402'
                   }
                 });
 

@@ -1,0 +1,208 @@
+2025-02-05 21:05:23.36
+ca244035
+User
+'sec-fetch-site': 'cross-site',
+2025-02-05 21:05:23.36
+ca244035
+User
+'sec-fetch-user': '?1',
+2025-02-05 21:05:23.36
+ca244035
+User
+'server-timing': 'depproxy;dur=1738807523284, pid1req;dur=1738807523326',
+2025-02-05 21:05:23.36
+ca244035
+User
+traceparent: '00-29bab72db0f4e91f72a0287a02b931db-c45d163712a200af-01',
+2025-02-05 21:05:23.36
+ca244035
+User
+'upgrade-insecure-requests': '1',
+2025-02-05 21:05:23.36
+ca244035
+User
+via: '1.1 google',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-cloud-trace-context': '29bab72db0f4e91f72a0287a02b931db/14149490030059585711;o=1',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-forwarded-for': '97.96.236.174, 34.117.33.233, 35.191.15.163,35.225.178.67',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-forwarded-host': 'deep-research-web-interface-meffordh.replit.app',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-forwarded-proto': 'https',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-bio': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-id': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-name': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-profile-image': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-roles': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-teams': '',
+2025-02-05 21:05:23.36
+ca244035
+User
+'x-replit-user-url': ''
+2025-02-05 21:05:23.36
+ca244035
+User
+}
+2025-02-05 21:05:23.36
+ca244035
+User
+}
+2025-02-05 21:05:24.07
+ca244035
+User
+LinkedIn authentication result: {
+2025-02-05 21:05:24.07
+ca244035
+User
+hasError: true,
+2025-02-05 21:05:24.07
+ca244035
+User
+hasUser: false,
+2025-02-05 21:05:24.07
+ca244035
+User
+info: undefined,
+2025-02-05 21:05:24.07
+ca244035
+User
+session: Session {
+2025-02-05 21:05:24.07
+ca244035
+User
+cookie: {
+2025-02-05 21:05:24.07
+ca244035
+User
+path: '/',
+2025-02-05 21:05:24.07
+ca244035
+User
+_expires: 2025-02-07T02:05:16.616Z,
+2025-02-05 21:05:24.07
+ca244035
+User
+originalMaxAge: 86400000,
+2025-02-05 21:05:24.07
+ca244035
+User
+httpOnly: true,
+2025-02-05 21:05:24.07
+ca244035
+User
+secure: true,
+2025-02-05 21:05:24.07
+ca244035
+User
+sameSite: 'lax'
+2025-02-05 21:05:24.07
+ca244035
+User
+}
+2025-02-05 21:05:24.07
+ca244035
+User
+}
+2025-02-05 21:05:24.07
+ca244035
+User
+}
+2025-02-05 21:05:24.07
+ca244035
+User
+Authentication error: InternalOAuthError: failed to fetch user profile
+2025-02-05 21:05:24.07
+ca244035
+User
+at Strategy. (/home/runner/workspace/node_modules/passport-linkedin-oauth2/lib/oauth2.js:57:19)
+2025-02-05 21:05:24.07
+ca244035
+User
+at passBackControl (/home/runner/workspace/node_modules/oauth/lib/oauth2.js:132:9)
+2025-02-05 21:05:24.07
+ca244035
+User
+at IncomingMessage. (/home/runner/workspace/node_modules/oauth/lib/oauth2.js:157:7)
+2025-02-05 21:05:24.07
+ca244035
+User
+at IncomingMessage.emit (node:events:530:35)
+2025-02-05 21:05:24.07
+ca244035
+User
+at endReadableNT (node:internal/streams/readable:1698:12)
+2025-02-05 21:05:24.07
+ca244035
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+2025-02-05 21:05:24.07
+ca244035
+User
+oauthError: {
+2025-02-05 21:05:24.07
+ca244035
+User
+statusCode: 403,
+2025-02-05 21:05:24.07
+ca244035
+User
+data: '{"status":403,"serviceErrorCode":100,"code":"ACCESS_DENIED","message":"Not enough permissions to access: me.GET.NO_VERSION"}'
+2025-02-05 21:05:24.07
+ca244035
+User
+}
+2025-02-05 21:05:24.07
+ca244035
+User
+}
+2025-02-05 21:05:24.09
+ca244035
+User
+2:05:24 AM [express] GET /api/auth/linkedin/callback 302 in 770ms
+2025-02-05 21:05:26.68
+ca244035
+User
+User request received, authenticated: false
+2025-02-05 21:05:26.71
+ca244035
+User
+2:05:26 AM [express] GET /api/user 401 in 58ms
+2025-02-05 21:06:30.20
+275fdba3
+System
+system: received signal terminated
+2025-02-05 21:06:30.22
+275fdba3
+System
+command finished with error [npm run start]: signal: terminated
+2025-02-05 21:06:30.25
+275fdba3
+System
+main done, exiting
