@@ -37,15 +37,16 @@ const router = express.Router();
 // Configure Auth.js with the LinkedIn provider
 router.use(
   '/',
-  Auth({
-    providers: [
-      LinkedIn({
-        clientId: process.env.AUTH_LINKEDIN_ID || '',
-        clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
-      }),
-    ],
-    secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
-    session: { strategy: 'jwt' },
+  function(req, res, next) {
+    Auth(req, {
+      providers: [
+        LinkedIn({
+          clientId: process.env.AUTH_LINKEDIN_ID || '',
+          clientSecret: process.env.AUTH_LINKEDIN_SECRET || '',
+        }),
+      ],
+      secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
+      session: { strategy: 'jwt' },
     callbacks: {
       async signIn({ user, account, profile }) {
         if (!profile?.email) {
