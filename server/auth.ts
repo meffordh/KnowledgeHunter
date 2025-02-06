@@ -9,9 +9,11 @@ export function setupAuth(app: express.Express) {
 
   const auth = Auth({
     debug: true,
-    secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
+    secret: process.env.AUTH_SECRET || process.env.REPLIT_ID || 'development-secret',
     trustHost: true,
-    basePath: "/api/auth",
+    session: {
+      strategy: 'jwt'
+    },
     providers: [
       LinkedIn({
         clientId: process.env.AUTH_LINKEDIN_ID || '',
@@ -23,8 +25,6 @@ export function setupAuth(app: express.Express) {
         }
       })
     ],
-    secret: process.env.AUTH_SECRET || process.env.REPL_ID || 'development-secret',
-    trustHost: true,
     callbacks: {
       async signIn({ user, account, profile }) {
         if (!profile?.email) {
