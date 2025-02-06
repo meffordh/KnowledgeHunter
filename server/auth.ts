@@ -64,18 +64,41 @@ export function setupAuth(app: Express) {
   }
 
   app.use(session(sessionSettings));
-
-  // Initialize passport before setting up strategies
   app.use(passport.initialize());
   app.use(passport.session());
+
+  passport.serializeUser((user, done) => {
+    console.log('Serializing user:', user.id);
+    done(null, user.id);
+  });
+
+  passport.deserializeUser(async (id: number, done) => {
+    console.log('Deserializing user:', id);
+    try {
+      const user = await storage.getUser(id);
+      if (!user) {
+        console.log('Deserialization failed: User not found:', id);
+        return done(null, false);
+      }
+      console.log('Successfully deserialized user:', user.id);
+      done(null, user);
+    } catch (error) {
+      console.error('Deserialization error:', error);
+      done(error);
+    }
+  });
 
   // Only set up LinkedIn strategy if credentials are available
   if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
     console.log('Setting up LinkedIn authentication strategy');
+
+    const callbackURL = `${process.env.REPL_SLUG ? 'https://' : 'http://'}${app.get('host') || 'localhost:5000'}/api/auth/linkedin/callback`;
+    console.log('LinkedIn callback URL:', callbackURL);
+
     passport.use(new LinkedInStrategy({
       clientID: process.env.LINKEDIN_CLIENT_ID,
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
-      callbackURL: "https://deep-research-web-interface-meffordh.replit.app/api/auth/linkedin/callback",
+      callbackURL,
       scope: ['openid', 'profile', 'email'],
       state: true,
       proxy: true
@@ -83,13 +106,16 @@ export function setupAuth(app: Express) {
       try {
         console.log('LinkedIn auth callback received:', {
           profileId: profile.id,
-          hasEmails: !!profile.emails?.length
+          hasEmails: !!profile.emails?.length,
+          accessToken: !!accessToken
         });
 
         // Fetch user info from LinkedIn's v2 userinfo endpoint
+        console.log('Fetching userinfo from LinkedIn...');
         const userinfoResponse = await fetch('https://api.linkedin.com/v2/userinfo', {
           headers: {
-            'Authorization': `Bearer ${accessToken}`
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json'
           }
         });
 
@@ -102,7 +128,8 @@ export function setupAuth(app: Express) {
         const userInfo = await userinfoResponse.json();
         console.log('LinkedIn userinfo received:', {
           hasEmail: !!userInfo.email,
-          scopes: userInfo.scope
+          scopes: userInfo.scope,
+          sub: userInfo.sub
         });
 
         const email = userInfo.email;
@@ -111,9 +138,11 @@ export function setupAuth(app: Express) {
           return done(new Error('No email provided by LinkedIn'));
         }
 
+        console.log('Looking up user by email:', email);
         let user = await storage.getUserByEmail(email);
 
         if (!user) {
+          console.log('Creating new user for email:', email);
           const randomPassword = randomBytes(16).toString('hex');
           const hashedPassword = await hashPassword(randomPassword);
 
@@ -121,18 +150,87 @@ export function setupAuth(app: Express) {
             email,
             password: hashedPassword
           });
-          console.log('Created new user for LinkedIn auth:', user.id);
+          console.log('Created new user:', user.id);
+        } else {
+          console.log('Found existing user:', user.id);
         }
 
-        done(null, user);
+        return done(null, user);
       } catch (error) {
         console.error('LinkedIn auth error:', error);
-        done(error);
+        return done(error);
       }
     }));
   } else {
     console.warn('LinkedIn credentials not found, LinkedIn authentication will not be available');
   }
+
+  // LinkedIn auth routes
+  app.get('/api/auth/linkedin',
+    (req, res, next) => {
+      console.log('LinkedIn auth request received');
+      passport.authenticate('linkedin', {
+        state: true,
+        scope: ['openid', 'profile', 'email']
+      })(req, res, next);
+    }
+  );
+
+  app.get('/api/auth/linkedin/callback',
+    (req, res, next) => {
+      console.log('LinkedIn callback received:', {
+        query: req.query,
+        hasSession: !!req.session,
+        sessionID: req.sessionID,
+        headers: req.headers,
+        host: req.get('host')
+      });
+
+      if (req.query.error) {
+        console.error('LinkedIn auth error:', {
+          error: req.query.error,
+          description: req.query.error_description
+        });
+        return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
+      }
+
+      passport.authenticate('linkedin', (err, user, info) => {
+        console.log('LinkedIn authentication result:', {
+          hasError: !!err,
+          hasUser: !!user,
+          info,
+          session: !!req.session
+        });
+
+        if (err) {
+          console.error('Authentication error:', err);
+          return res.redirect(`/auth?error=${encodeURIComponent(err.message)}`);
+        }
+
+        if (!user) {
+          console.log('Authentication failed:', info);
+          return res.redirect('/auth?error=Authentication failed');
+        }
+
+        req.login(user, (loginErr) => {
+          if (loginErr) {
+            console.error('Login error:', loginErr);
+            return res.redirect(`/auth?error=${encodeURIComponent(loginErr.message)}`);
+          }
+
+          console.log('Successfully logged in user:', user.id);
+          req.session.save((err) => {
+            if (err) {
+              console.error('Session save error:', err);
+              return res.redirect('/auth?error=Session save failed');
+            }
+            console.log('Session saved successfully');
+            res.redirect('/');
+          });
+        });
+      })(req, res, next);
+    }
+  );
 
   passport.use(
     new LocalStrategy(
@@ -159,67 +257,6 @@ export function setupAuth(app: Express) {
     )
   );
 
-  passport.serializeUser((user, done) => {
-    console.log('Serializing user:', user.id);
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id: number, done) => {
-    console.log('Deserializing user:', id);
-    try {
-      const user = await storage.getUser(id);
-      if (!user) {
-        console.log('Deserialization failed: User not found:', id);
-        return done(null, false);
-      }
-      done(null, user);
-    } catch (error) {
-      console.error('Deserialization error:', error);
-      done(error);
-    }
-  });
-
-  // LinkedIn auth routes
-  app.get('/api/auth/linkedin',
-    (req, res, next) => {
-      console.log('LinkedIn auth request received');
-      if (!process.env.LINKEDIN_CLIENT_ID || !process.env.LINKEDIN_CLIENT_SECRET) {
-        console.error('LinkedIn credentials missing:', {
-          hasClientId: !!process.env.LINKEDIN_CLIENT_ID,
-          hasClientSecret: !!process.env.LINKEDIN_CLIENT_SECRET
-        });
-        return res.status(503).json({ error: 'LinkedIn authentication is not configured' });
-      }
-      next();
-    },
-    passport.authenticate('linkedin', {
-      state: randomBytes(32).toString('hex'),
-      scope: ['openid', 'profile', 'email']
-    })
-  );
-
-  app.get('/api/auth/linkedin/callback',
-    (req, res, next) => {
-      console.log('LinkedIn callback received with query:', req.query);
-
-      // Handle LinkedIn-specific errors
-      if (req.query.error) {
-        console.error('LinkedIn auth error:', {
-          error: req.query.error,
-          description: req.query.error_description
-        });
-
-        // Redirect to auth page with error message
-        return res.redirect(`/auth?error=${encodeURIComponent(req.query.error_description as string)}`);
-      }
-
-      passport.authenticate('linkedin', {
-        successRedirect: '/',
-        failureRedirect: '/auth',
-        failureMessage: true
-      })(req, res, next);
-    }
-  );
 
   app.post("/api/register", async (req, res) => {
     console.log('Registration request received:', req.body);
