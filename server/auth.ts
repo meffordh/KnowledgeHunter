@@ -37,6 +37,11 @@ export function setupAuth(app: express.Express) {
       "/user/account",
       "/verify"
     ],
+    // Add session config
+    session: {
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+      sameSite: 'strict'
+    }
   }));
   
   // Mount auth router
