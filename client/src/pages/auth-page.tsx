@@ -5,8 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
   useEffect(() => {
-    // Use the standardized Clerk frontend URL
-    const signInUrl = `https://clerk.com/sign-in?redirect_url=${window.location.origin}`;
+    const signInUrl = `${process.env.CLERK_FRONTEND_API}/sign-in?redirect_url=${window.location.origin}`;
     window.location.href = signInUrl;
   }, []);
 
