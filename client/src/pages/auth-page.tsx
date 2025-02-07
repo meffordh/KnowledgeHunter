@@ -4,8 +4,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
   useEffect(() => {
-    // Redirect to Clerk's hosted sign-in page
-    window.location.href = `https://smooth-snipe-57.clerk.accounts.dev/sign-in`;
+    const signInUrl = `https://smooth-snipe-57.clerk.accounts.dev/sign-in?redirect_url=${window.location.origin}`;
+    window.location.href = signInUrl;
   }, []);
 
   return (
