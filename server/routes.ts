@@ -59,17 +59,21 @@ export function registerRoutes(app: Express): Server {
         
         if (!authToken?.startsWith('Bearer ')) {
           console.log('WebSocket connection rejected: No auth token');
-      ws.send(JSON.stringify({
-        status: 'ERROR',
-        error: 'Authentication required',
-        learnings: [],
-        progress: 0,
-        totalProgress: 0,
-        visitedUrls: []
-      }));
-      ws.close();
-      return;
-    };
+          ws.send(JSON.stringify({
+            status: 'ERROR',
+            error: 'Authentication required',
+            learnings: [],
+            progress: 0,
+            totalProgress: 0,
+            visitedUrls: []
+          }));
+          ws.close();
+          return;
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket auth message:', error);
+        ws.close();
+      }
 
     ws.on('message', async (message) => {
       try {
