@@ -23,7 +23,11 @@ router.get('/user', requireAuth(), async (req, res) => {
 
 export function setupAuth(app: express.Express) {
   // Add global Clerk middleware
-  app.use(clerkMiddleware());
+  app.use(clerkMiddleware({
+  debug: true,
+  // Add CORS support for Clerk
+  authorizedParties: ['https://clerk.com', process.env.CLERK_FRONTEND_API],
+}));
   
   // Mount auth router
   app.use('/api/auth', router);

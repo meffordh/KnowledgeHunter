@@ -1,10 +1,12 @@
+
 import { useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
   useEffect(() => {
-    const signInUrl = `https://smooth-snipe-57.clerk.accounts.dev/sign-in?redirect_url=${window.location.origin}`;
+    // Use the standardized Clerk frontend URL
+    const signInUrl = `https://clerk.com/sign-in?redirect_url=${window.location.origin}`;
     window.location.href = signInUrl;
   }, []);
 
