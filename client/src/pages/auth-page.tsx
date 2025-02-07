@@ -5,7 +5,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
   useEffect(() => {
-    const signInUrl = `${process.env.CLERK_FRONTEND_API}/sign-in?redirect_url=${window.location.origin}`;
+    const clerkFrontendApi = import.meta.env.VITE_CLERK_FRONTEND_API || '';
+    const signInUrl = `${clerkFrontendApi}/sign-in?redirect_url=${window.location.origin}`;
     window.location.href = signInUrl;
   }, []);
 

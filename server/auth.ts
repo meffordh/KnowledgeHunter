@@ -25,10 +25,10 @@ export function setupAuth(app: express.Express) {
   // Add global Clerk middleware
   app.use(clerkMiddleware({
     debug: true,
-    afterSignIn: () => "/", // Redirect to home page after sign in
-    afterSignUp: () => "/", // Redirect to home page after sign up
     signInUrl: "/auth",
-    publicRoutes: ["/auth"],
+    afterSignIn: "/",
+    afterSignUp: "/",
+    publicRoutes: ["/auth", "/sign-in", "/sign-up"],
   }));
   
   // Mount auth router
