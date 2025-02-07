@@ -1,5 +1,6 @@
+
 import { createContext, ReactNode, useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User } from "@shared/schema";
 import { getQueryFn } from "../lib/queryClient";
 
@@ -7,11 +8,14 @@ type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   error: Error | null;
+  logoutMutation: any;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  
   const {
     data: user,
     error,
@@ -21,12 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await fetch("/sign-out", { method: "POST" });
+      queryClient.setQueryData(["/api/auth/user"], null);
+    }
+  });
+
   return (
     <AuthContext.Provider
       value={{
         user: user ?? null,
         isLoading,
         error,
+        logoutMutation
       }}
     >
       {children}
