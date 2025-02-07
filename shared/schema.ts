@@ -52,3 +52,15 @@ export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
 export type ResearchReport = typeof researchReports.$inferSelect;
 export type Research = z.infer<typeof researchSchema>;
 export type ResearchProgress = z.infer<typeof researchProgressSchema>;
+
+import { z } from 'zod';
+
+export const linkedInShareSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  reportId: z.string(),
+  linkedInPostId: z.string(),
+  sharedAt: z.date(),
+});
+
+export type LinkedInShare = z.infer<typeof linkedInShareSchema>;

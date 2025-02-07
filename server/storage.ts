@@ -4,6 +4,7 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 import { users, researchReports, type User, type InsertUser, type ResearchReport, type InsertResearchReport } from "@shared/schema";
+import crypto from 'crypto'; // Added for UUID generation
 
 const PostgresSessionStore = connectPg(session);
 
@@ -16,10 +17,13 @@ export interface IStorage {
   createResearchReport(report: InsertResearchReport): Promise<ResearchReport>;
   getUserReports(userId: number): Promise<ResearchReport[]>;
   sessionStore: session.Store;
+  trackLinkedInShare(userId: string, reportId: string, linkedInPostId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}>;
+  getReportShares(reportId: string): Promise< {id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]>;
 }
 
 export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
+  private shares: {id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[] = []; // In-memory storage for shares - REPLACE WITH DATABASE TABLE
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({
@@ -87,6 +91,23 @@ export class DatabaseStorage implements IStorage {
       .from(researchReports)
       .where(eq(researchReports.userId, userId))
       .orderBy(desc(researchReports.createdAt));
+  }
+
+  async trackLinkedInShare(userId: string, reportId: string, linkedInPostId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}> {
+    const share = {
+      id: crypto.randomUUID(),
+      userId,
+      reportId,
+      linkedInPostId,
+      sharedAt: new Date()
+    };
+
+    this.shares.push(share);
+    return share;
+  }
+
+  async getReportShares(reportId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]> {
+    return this.shares.filter(share => share.reportId === reportId);
   }
 }
 

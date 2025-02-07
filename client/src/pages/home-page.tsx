@@ -260,7 +260,8 @@ export default function HomePage() {
                         <div className="flex justify-end mb-4">
                           <ShareButton 
                             content={`Check out my research on: ${progress.query}`} 
-                            url={window.location.href} 
+                            url={window.location.href}
+                            reportId={progress.id}
                           />
                         </div>
                         <ReactMarkdown>{progress.report}</ReactMarkdown>

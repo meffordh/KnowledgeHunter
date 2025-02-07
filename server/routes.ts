@@ -49,11 +49,23 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.post('/api/social/linkedin/share', async (req, res) => { // Added LinkedIn share endpoint
+  app.post('/api/social/linkedin/share', requireAuth(), async (req, res) => { // Added LinkedIn share endpoint
     try {
-      const { content, url } = req.body;
+      const { content, url, reportId } = req.body;
+      const userId = req.auth?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
       const result = await postToLinkedIn(req, content, url);
-      res.json({ success: true, postId: result.id });
+      const share = await storage.trackLinkedInShare(userId, reportId, result.id);
+
+      res.json({ 
+        success: true, 
+        postId: result.id,
+        share 
+      });
     } catch (error) {
       console.error('LinkedIn share error:', error);
       res.status(500).json({ error: error.message });

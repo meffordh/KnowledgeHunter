@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 interface ShareButtonProps {
   content: string;
   url: string;
+  reportId: string;
 }
 
 export function ShareButton({ content, url }: ShareButtonProps) {
@@ -21,7 +22,7 @@ export function ShareButton({ content, url }: ShareButtonProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content, url }),
+        body: JSON.stringify({ content, url, reportId }),
       });
 
       if (!response.ok) {
