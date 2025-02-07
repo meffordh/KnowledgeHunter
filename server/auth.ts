@@ -1,27 +1,30 @@
 
-import { ClerkExpressWithAuth } from '@clerk/express';
+import { clerkClient, clerkMiddleware, requireAuth } from '@clerk/express';
 import express from 'express';
 
 const router = express.Router();
 
-// Initialize clerk middleware
-const auth = ClerkExpressWithAuth();
-
 // Protected route to get user data
-router.get('/user', auth, (req, res) => {
+router.get('/user', requireAuth(), async (req, res) => {
   if (!req.auth?.userId) {
     return res.status(401).json({ error: "Not authenticated" });
   }
+
+  // Get user details using clerkClient
+  const user = await clerkClient.users.getUser(req.auth.userId);
   
   res.json({
-    id: req.auth.userId,
-    email: req.auth.sessionClaims?.email,
-    firstName: req.auth.sessionClaims?.firstName,
-    lastName: req.auth.sessionClaims?.lastName
+    id: user.id,
+    email: user.emailAddresses[0]?.emailAddress,
+    firstName: user.firstName,
+    lastName: user.lastName
   });
 });
 
 export function setupAuth(app: express.Express) {
+  // Add global Clerk middleware
+  app.use(clerkMiddleware());
+  
   // Mount auth router
   app.use('/api/auth', router);
 }
