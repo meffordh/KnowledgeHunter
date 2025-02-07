@@ -1,0 +1,240 @@
+[Skip to main content](https://clerk.com/docs/quickstarts/react-router#main)
+
+1. [Install `@clerk/react-router`](https://clerk.com/docs/quickstarts/react-router#install-clerk-react-router)
+2. [Set your Clerk API keys](https://clerk.com/docs/quickstarts/react-router#set-your-clerk-api-keys)
+3. [Configure `rootAuthLoader()`](https://clerk.com/docs/quickstarts/react-router#configure-root-auth-loader)
+4. [Add `<ClerkProvider>` and Clerk components to your app](https://clerk.com/docs/quickstarts/react-router#add-clerk-provider-and-clerk-components-to-your-app)
+5. [Create your first user](https://clerk.com/docs/quickstarts/react-router#create-your-first-user)
+6. [Next steps](https://clerk.com/docs/quickstarts/react-router#next-steps)
+
+[Edit this page on GitHub](https://github.com/clerk/clerk-docs/edit/main/docs/quickstarts/react-router.mdx)
+
+# React Router Quickstart
+
+## You will learn the following:
+
+- Install `@clerk/react-router`
+- Set your Clerk API keys
+- Configure `rootAuthLoader()`
+- Add `<ClerkProvider>` and Clerk components
+
+## Before you start
+
+- [Set up a Clerk application](https://clerk.com/docs/quickstarts/setup-clerk)
+- [Create a React Router application](https://reactrouter.com/start/framework/installation)
+
+## Example repository
+
+- [React Router Quickstart Repo](https://github.com/clerk/clerk-react-router-quickstart)
+
+The [Clerk React Router SDK](https://clerk.com/docs/references/react-router/overview) provides prebuilt components, hooks, and stores to make it easy to integrate authentication and user management in your React Router app.
+
+This guide assumes that you're using React Router **v7.1.2 or later** in framework mode. To use React Router as a library instead, see the [library mode guide](https://clerk.com/docs/references/react-router/library-mode).
+
+## [Install `@clerk/react-router`](https://clerk.com/docs/quickstarts/react-router\#install-clerk-react-router)
+
+Run the following command to install the SDK:
+
+npm
+
+yarn
+
+pnpm
+
+terminal
+
+```isolate block w-fit min-w-full *:inline-block *:w-full *:before:pointer-events-none *:before:sticky *:before:left-0 *:before:z-20 *:before:inline-block *:before:select-none *:before:bg-gradient-to-r *:before:from-gray-800 *:after:pointer-events-none *:after:sticky *:after:right-0 *:after:z-10 *:after:inline-block *:after:w-4 *:after:select-none *:after:bg-gradient-to-l *:after:from-gray-800 *:after:from-35% *:after:content-["_"] [counter-reset:line] *:[counter-increment:line] *:before:w-4 *:before:from-35% *:before:content-["_"] sm:*:before:w-11 sm:*:before:from-80% sm:*:before:pr-4 sm:*:before:text-right sm:*:before:text-gray-400 sm:*:before:content-[counter(line)]
+npm install @clerk/react-router
+```
+
+## [Set your Clerk API keys](https://clerk.com/docs/quickstarts/react-router\#set-your-clerk-api-keys)
+
+1. In the Clerk Dashboard, navigate to the [**API keys**⁠](https://dashboard.clerk.com/last-active?path=api-keys) page.
+2. In the **Quick Copy** section, copy your Clerk Publishable and Secret Key.
+3. Paste your keys into your `.env` file.
+
+The final result should resemble the following:
+
+.env
+
+```isolate block w-fit min-w-full *:inline-block *:w-full *:before:pointer-events-none *:before:sticky *:before:left-0 *:before:z-20 *:before:inline-block *:before:select-none *:before:bg-gradient-to-r *:before:from-gray-800 *:after:pointer-events-none *:after:sticky *:after:right-0 *:after:z-10 *:after:inline-block *:after:w-4 *:after:select-none *:after:bg-gradient-to-l *:after:from-gray-800 *:after:from-35% *:after:content-["_"] [counter-reset:line] *:[counter-increment:line] *:before:w-4 *:before:from-35% *:before:content-["_"] sm:*:before:w-11 sm:*:before:from-80% sm:*:before:pr-4 sm:*:before:text-right sm:*:before:text-gray-400 sm:*:before:content-[counter(line)]
+VITE_CLERK_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+CLERK_SECRET_KEY=YOUR_SECRET_KEY
+```
+
+## [Configure `rootAuthLoader()`](https://clerk.com/docs/quickstarts/react-router\#configure-root-auth-loader)
+
+The `rootAuthLoader()` function provides access to authentication state in any React Router route.
+
+The following code shows how to add this function to your `root.tsx` file. If you're using [Clerk's React Router quickstart⁠](https://github.com/clerk/clerk-react-router-quickstart) or the [React Router template⁠](https://reactrouter.com/start/framework/installation), most of this code will already be present.
+
+To load additional data or configure options, see the [`rootAuthLoader()`](https://clerk.com/docs/references/react-router/root-auth-loader) reference.
+
+app/root.tsx
+
+```isolate block w-fit min-w-full *:inline-block *:w-full *:before:pointer-events-none *:before:sticky *:before:left-0 *:before:z-20 *:before:inline-block *:before:select-none *:before:bg-gradient-to-r *:before:from-gray-800 *:after:pointer-events-none *:after:sticky *:after:right-0 *:after:z-10 *:after:inline-block *:after:w-4 *:after:select-none *:after:bg-gradient-to-l *:after:from-gray-800 *:after:from-35% *:after:content-["_"] [counter-reset:line] *:[counter-increment:line] *:before:w-4 *:before:from-35% *:before:content-["_"] sm:*:before:w-11 sm:*:before:from-80% sm:*:before:pr-4 sm:*:before:text-right sm:*:before:text-gray-400 sm:*:before:content-[counter(line)]
+import { rootAuthLoader } from '@clerk/react-router/ssr.server'
+import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
+import type { Route } from './+types/root'
+import stylesheet from './app.css?url'
+
+export async function loader(args: Route.LoaderArgs) {
+  return rootAuthLoader(args)
+}
+
+export const links: Route.LinksFunction = () => [\
+  { rel: 'preconnect', href: 'https://fonts.googleapis.com' },\
+  {\
+    rel: 'preconnect',\
+    href: 'https://fonts.gstatic.com',\
+    crossOrigin: 'anonymous',\
+  },\
+  {\
+    rel: 'stylesheet',\
+    href: 'https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap',\
+  },\
+  { rel: 'stylesheet', href: stylesheet },\
+]
+
+export function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        {children}
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  )
+}
+
+export default function App() {
+  return <Outlet />
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  let message = 'Oops!'
+  let details = 'An unexpected error occurred.'
+  let stack: string | undefined
+
+  if (isRouteErrorResponse(error)) {
+    message = error.status === 404 ? '404' : 'Error'
+    details =
+      error.status === 404 ? 'The requested page could not be found.' : error.statusText || details
+  } else if (import.meta.env.DEV && error && error instanceof Error) {
+    details = error.message
+    stack = error.stack
+  }
+
+  return (
+    <main className="pt-16 p-4 container mx-auto">
+      <h1>{message}</h1>
+      <p>{details}</p>
+      {stack && (
+        <pre className="w-full p-4 overflow-x-auto">
+          <code>{stack}</code>
+        </pre>
+      )}
+    </main>
+  )
+}
+```
+
+Expand code
+
+## [Add `<ClerkProvider>` and Clerk components to your app](https://clerk.com/docs/quickstarts/react-router\#add-clerk-provider-and-clerk-components-to-your-app)
+
+The [`<ClerkProvider>`](https://clerk.com/docs/components/clerk-provider) component provides session and user context to Clerk's hooks and components. It's recommended to wrap your entire app at the entry point with `<ClerkProvider>` to make authentication globally accessible. See the [reference docs](https://clerk.com/docs/components/clerk-provider) for other configuration options.
+
+It's required to pass `loaderData` to the `<ClerkProvider>` component. This data is provided by the `rootAuthLoader()` function. It's also recommended to pass the `signUpFallbackRedirectUrl` and `signInFallbackRedirectUrl` props. These specify the fallback URL to redirect to after the user signs up or signs in, respectively, if there's no `redirect_url` in the path already.
+
+You can control which content signed-in and signed-out users can see with Clerk's [prebuilt control components](https://clerk.com/docs/components/overview#control-components).
+
+The following example adds `<ClerkProvider>` and creates a header using the following Clerk components:
+
+- [`<SignedIn>`](https://clerk.com/docs/components/control/signed-in): Children of this component can only be seen while **signed in**.
+- [`<SignedOut>`](https://clerk.com/docs/components/control/signed-out): Children of this component can only be seen while **signed out**.
+- [`<UserButton />`](https://clerk.com/docs/components/user/user-button): Shows the signed-in user's avatar. Selecting it opens a dropdown menu with account management options.
+- [`<SignInButton />`](https://clerk.com/docs/components/unstyled/sign-in-button): An unstyled component that links to the sign-in page. In this example, since no props or [environment variables](https://clerk.com/docs/deployments/clerk-environment-variables) are set for the sign-in URL, this component links to the [Account Portal sign-in page](https://clerk.com/docs/customization/account-portal/overview#sign-in).
+
+app/root.tsx
+
+```isolate block w-fit min-w-full *:inline-block *:w-full *:before:pointer-events-none *:before:sticky *:before:left-0 *:before:z-20 *:before:inline-block *:before:select-none *:before:bg-gradient-to-r *:before:from-gray-800 *:after:pointer-events-none *:after:sticky *:after:right-0 *:after:z-10 *:after:inline-block *:after:w-4 *:after:select-none *:after:bg-gradient-to-l *:after:from-gray-800 *:after:from-35% *:after:content-["_"] [counter-reset:line] *:[counter-increment:line] *:before:w-4 *:before:from-35% *:before:content-["_"] sm:*:before:w-11 sm:*:before:from-80% sm:*:before:pr-4 sm:*:before:text-right sm:*:before:text-gray-400 sm:*:before:content-[counter(line)]
+// Other imports
+
+import { ClerkProvider, SignedIn, SignedOut, UserButton, SignInButton } from '@clerk/react-router'
+
+export default function App({ loaderData }: Route.ComponentProps) {
+  return (
+    <ClerkProvider
+      loaderData={loaderData}
+      signUpFallbackRedirectUrl="/"
+      signInFallbackRedirectUrl="/"
+    >
+      <header className="flex items-center justify-center py-8 px-4">
+        <SignedOut>
+          <SignInButton />
+        </SignedOut>
+        <SignedIn>
+          <UserButton />
+        </SignedIn>
+      </header>
+      <main>
+        <Outlet />
+      </main>
+    </ClerkProvider>
+  )
+}
+
+// Rest of the root.tsx code
+```
+
+## [Create your first user](https://clerk.com/docs/quickstarts/react-router\#create-your-first-user)
+
+Run your project with the following command:
+
+npm
+
+yarn
+
+pnpm
+
+terminal
+
+```isolate block w-fit min-w-full *:inline-block *:w-full *:before:pointer-events-none *:before:sticky *:before:left-0 *:before:z-20 *:before:inline-block *:before:select-none *:before:bg-gradient-to-r *:before:from-gray-800 *:after:pointer-events-none *:after:sticky *:after:right-0 *:after:z-10 *:after:inline-block *:after:w-4 *:after:select-none *:after:bg-gradient-to-l *:after:from-gray-800 *:after:from-35% *:after:content-["_"] [counter-reset:line] *:[counter-increment:line] *:before:w-4 *:before:from-35% *:before:content-["_"] sm:*:before:w-11 sm:*:before:from-80% sm:*:before:pr-4 sm:*:before:text-right sm:*:before:text-gray-400 sm:*:before:content-[counter(line)]
+npm run dev
+```
+
+Visit your app's homepage at [`http://localhost:5173`⁠](http://localhost:5173/). Sign up to create your first user.
+
+## [Next steps](https://clerk.com/docs/quickstarts/react-router\#next-steps)
+
+### [Createacustomsign-in-or-uppage](https://clerk.com/docs/references/react-router/custom-sign-in-or-up-page)
+
+Learn how add custom sign-in-or-up page with Clerk components.
+
+### [Readsessionanduserdata](https://clerk.com/docs/references/react-router/read-session-data)
+
+Learn how to use Clerk's hooks and helpers to access the active session and user data in your React Router app.
+
+### [Librarymode](https://clerk.com/docs/references/react-router/library-mode)
+
+Learn how to use Clerk with React Router in library mode to add authentication to your application.
+
+## Feedback
+
+What did you think of this content?
+
+It was helpfulIt was not helpfulI have feedback
+
+[Edit this page on GitHub](https://github.com/clerk/clerk-docs/edit/main/docs/quickstarts/react-router.mdx)
+
+Last updated onFeb 5, 2025
+
+Support
