@@ -44,27 +44,17 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       const token = await window.Clerk?.session?.getToken();
       const ws = new WebSocket(wsUrl);
       
-      // Send auth token immediately after connection
-      ws.onopen = () => {
-        if (token) {
-          ws.send(JSON.stringify({ 
-            authorization: `Bearer ${token}`,
-            ...research,
-            userId: user?.id
-          }));
-        }
-      };
-      
-      // Set auth header after connection
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'auth', token }));
-      };
-
+      // Single onopen handler for authentication and research start
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
-        // Include user ID in the research request
-        ws.send(JSON.stringify({ ...research, userId: user.id }));
+        
+        // Send authentication and research data
+        ws.send(JSON.stringify({ 
+          authorization: `Bearer ${token}`,
+          ...research,
+          userId: user.id
+        }));
       };
 
       ws.onmessage = (event) => {
