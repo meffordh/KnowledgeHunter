@@ -1,3 +1,22 @@
+
+# ResearchHunter
+
+ResearchHunter is an intelligent web-based research platform designed to simplify complex information gathering through advanced AI-powered authentication and data retrieval mechanisms. The application focuses on robust, scalable OAuth integration with comprehensive error handling and social platform connectivity.
+
+## Features
+
+- AI-powered research assistance using OpenAI o3-mini
+- Clerk authentication and user management
+- Real-time research progress tracking via WebSocket
+- Persistent storage with PostgreSQL
+- Comprehensive error handling and logging
+- TypeScript/Node.js backend with Express
+- React frontend with shadcn/ui components
+- WebSocket for real-time communication
+- Firecrawl integration for web crawling
+
+## Research Process
+```mermaid
 graph TD
     A[User Input] --> B[Clarifying Questions]
     B --> C[Research Parameters]
@@ -33,13 +52,11 @@ PGUSER=your_pg_user
 PGPASSWORD=your_pg_password
 PGDATABASE=your_pg_database
 
-# OAuth Configuration
-LINKEDIN_CLIENT_ID=your_linkedin_client_id
-LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
-
 # API Keys
 OPENAI_API_KEY=your_openai_api_key
 FIRECRAWL_API_KEY=your_firecrawl_api_key
+CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
 ```
 
 ## Setup Instructions
@@ -55,12 +72,9 @@ cd research-hunter
 npm install
 ```
 
-3. Set up LinkedIn OAuth:
-   - Create a LinkedIn application at https://www.linkedin.com/developers/apps
-   - Enable "Sign In with LinkedIn using OpenID Connect"
-   - Add your callback URL: `https://your-domain.com/api/auth/linkedin/callback`
-   - Configure the required scopes: `openid`, `profile`, `email`, `w_member_social`
-   - Copy your Client ID and Client Secret to the environment variables
+3. Set up environment variables:
+   - Create a `.env` file in the root directory
+   - Add all required environment variables as shown above
 
 4. Start the development server:
 ```bash
@@ -82,3 +96,4 @@ npm run dev
 │   ├── routes.ts        # API routes
 │   └── storage.ts       # Database interface
 └── shared/              # Shared types and schemas
+```
