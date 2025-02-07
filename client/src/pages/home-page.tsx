@@ -255,8 +255,14 @@ export default function HomePage() {
                         Download
                       </Button>
                     </div>
-                    <Card>
-                      <CardContent className="prose prose-sm max-w-none pt-6">
+                    <Card className="mt-4">
+                      <CardContent className="prose dark:prose-invert max-w-none py-4">
+                        <div className="flex justify-end mb-4">
+                          <ShareButton 
+                            content={`Check out my research on: ${progress.query}`} 
+                            url={window.location.href} 
+                          />
+                        </div>
                         <ReactMarkdown>{progress.report}</ReactMarkdown>
                       </CardContent>
                     </Card>
