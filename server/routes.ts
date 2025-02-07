@@ -48,7 +48,7 @@ export function registerRoutes(app: Express): Server {
 
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
-
+    
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       console.log('WebSocket connection rejected: No auth token');
@@ -62,7 +62,7 @@ export function registerRoutes(app: Express): Server {
       }));
       ws.close();
       return;
-    }
+    };
 
     ws.on('message', async (message) => {
       try {
