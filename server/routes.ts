@@ -48,21 +48,10 @@ export function registerRoutes(app: Express): Server {
 
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
-    
+
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       console.log('WebSocket connection rejected: No auth token');
-      ws.send(JSON.stringify({
-        status: 'ERROR',
-        error: 'Authentication required',
-        learnings: [],
-        progress: 0,
-        totalProgress: 0,
-        visitedUrls: []
-      }));
-      ws.close();
-      return;
-    }
       ws.send(JSON.stringify({
         status: 'ERROR',
         error: 'Authentication required',
