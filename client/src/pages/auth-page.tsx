@@ -1,7 +1,8 @@
 
-import { useEffect } from 'react';
+import { SignInButton } from "@clerk/clerk-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export default function AuthPage() {
   return (
