@@ -1,5 +1,7 @@
-
 import { Request } from 'express';
+import { db } from './db';
+import { linkedinShares, users } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 interface LinkedInSharePayload {
   author: string;
@@ -22,16 +24,25 @@ interface LinkedInSharePayload {
 }
 
 export async function postToLinkedIn(req: Request, content: string, url: string) {
-  const token = req.auth?.sessionClaims?.['linkedin_oauth_access_token'];
+  if (!req.auth?.userId) {
+    throw new Error('User not authenticated');
+  }
+
+  const token = req.auth.sessionClaims?.['linkedin_oauth_access_token'];
   if (!token) {
-    throw new Error('LinkedIn token not found');
+    throw new Error('LinkedIn access token not found. Please connect your LinkedIn account.');
   }
 
   const userResponse = await fetch('https://api.linkedin.com/v2/me', {
     headers: { 'Authorization': `Bearer ${token}` }
   });
+
+  if (!userResponse.ok) {
+    throw new Error('Failed to fetch LinkedIn profile');
+  }
+
   const userData = await userResponse.json();
-  
+
   const payload: LinkedInSharePayload = {
     author: `urn:li:person:${userData.id}`,
     lifecycleState: 'PUBLISHED',
@@ -64,8 +75,37 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
   });
 
   if (!response.ok) {
-    throw new Error(`LinkedIn API error: ${await response.text()}`);
+    const errorText = await response.text();
+    throw new Error(`LinkedIn API error: ${errorText}`);
   }
 
-  return await response.json();
+  const data = await response.json();
+
+  // Store the share in the database
+  await db.insert(linkedinShares).values({
+    userId: req.auth.userId,
+    reportId: req.body.reportId,
+    linkedinPostId: data.id,
+  });
+
+  return data;
+}
+
+export async function handleLinkedInShare(req: Request) {
+  const { content, url, reportId } = req.body;
+
+  if (!content || !url || !reportId) {
+    throw new Error('Missing required fields: content, url, or reportId');
+  }
+
+  const result = await postToLinkedIn(req, content, url);
+
+  // Update user's research count
+  if (req.auth?.userId) {
+    await db.update(users)
+      .set({ researchCount: db.raw('research_count + 1') })
+      .where(eq(users.id, req.auth.userId));
+  }
+
+  return result;
 }

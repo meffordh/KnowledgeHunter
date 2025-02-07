@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from './button';
 import { Share } from 'lucide-react';
@@ -7,14 +6,23 @@ import { useToast } from '@/hooks/use-toast';
 interface ShareButtonProps {
   content: string;
   url: string;
-  reportId: string;
+  reportId: number;
 }
 
-export function ShareButton({ content, url }: ShareButtonProps) {
+export function ShareButton({ content, url, reportId }: ShareButtonProps) {
   const [isSharing, setIsSharing] = useState(false);
   const { toast } = useToast();
 
   const handleShare = async () => {
+    if (!reportId) {
+      toast({
+        title: 'Error',
+        description: 'Cannot share: Invalid report ID',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSharing(true);
     try {
       const response = await fetch('/api/social/linkedin/share', {
@@ -26,17 +34,22 @@ export function ShareButton({ content, url }: ShareButtonProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to share on LinkedIn');
+        const error = await response.text();
+        throw new Error(error || 'Failed to share on LinkedIn');
       }
 
+      const data = await response.json();
       toast({
         title: 'Success',
         description: 'Successfully shared to LinkedIn',
       });
+
+      return data;
     } catch (error) {
+      console.error('Share error:', error);
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to share',
+        description: error instanceof Error ? error.message : 'Failed to share on LinkedIn',
         variant: 'destructive',
       });
     } finally {
@@ -50,6 +63,7 @@ export function ShareButton({ content, url }: ShareButtonProps) {
       disabled={isSharing}
       variant="outline"
       size="sm"
+      className="w-full sm:w-auto"
     >
       <Share className="mr-2 h-4 w-4" />
       {isSharing ? 'Sharing...' : 'Share on LinkedIn'}

@@ -18,6 +18,14 @@ export const researchReports = pgTable("research_reports", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const linkedinShares = pgTable("linkedin_shares", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
+  reportId: integer("report_id").references(() => researchReports.id),
+  linkedinPostId: text("linkedin_post_id").notNull(),
+  sharedAt: timestamp("shared_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   researchCount: true,
@@ -26,6 +34,11 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export const insertResearchReportSchema = createInsertSchema(researchReports).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertLinkedinShareSchema = createInsertSchema(linkedinShares).omit({
+  id: true,
+  sharedAt: true,
 });
 
 export const researchSchema = z.object({
@@ -52,15 +65,5 @@ export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
 export type ResearchReport = typeof researchReports.$inferSelect;
 export type Research = z.infer<typeof researchSchema>;
 export type ResearchProgress = z.infer<typeof researchProgressSchema>;
-
-import { z } from 'zod';
-
-export const linkedInShareSchema = z.object({
-  id: z.string(),
-  userId: z.string(),
-  reportId: z.string(),
-  linkedInPostId: z.string(),
-  sharedAt: z.date(),
-});
-
-export type LinkedInShare = z.infer<typeof linkedInShareSchema>;
+export type InsertLinkedinShare = z.infer<typeof insertLinkedinShareSchema>;
+export type LinkedinShare = typeof linkedinShares.$inferSelect;
