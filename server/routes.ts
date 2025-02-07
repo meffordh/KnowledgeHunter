@@ -73,7 +73,9 @@ export function registerRoutes(app: Express): Server {
       } catch (error) {
         console.error('Error handling WebSocket auth message:', error);
         ws.close();
+        return;
       }
+    });
 
     ws.on('message', async (message) => {
       try {
