@@ -6,6 +6,7 @@ import { setupAuth } from './auth.js';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
 import { storage } from './storage';
+import { postToLinkedIn } from './linkedin'; // Added import for LinkedIn integration
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -48,15 +49,27 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.post('/api/social/linkedin/share', async (req, res) => { // Added LinkedIn share endpoint
+    try {
+      const { content, url } = req.body;
+      const result = await postToLinkedIn(req, content, url);
+      res.json({ success: true, postId: result.id });
+    } catch (error) {
+      console.error('LinkedIn share error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
-    
+
     // First message should contain auth token
     ws.once('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
         const authToken = data.authorization;
-        
+
         if (!authToken?.startsWith('Bearer ')) {
           console.log('WebSocket connection rejected: No auth token');
           ws.send(JSON.stringify({
