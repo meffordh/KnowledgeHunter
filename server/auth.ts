@@ -37,26 +37,7 @@ router.get('/user', requireAuth(), async (req, res) => {
 
 export function setupAuth(app: express.Express) {
   // Add global Clerk middleware
-  app.use(clerkMiddleware({
-    debug: true,
-    signInUrl: "/sign-in",
-    signUpUrl: "/sign-up",
-    afterSignIn: "/",
-    afterSignUp: "/",
-    publicRoutes: [
-      "/sign-in",
-      "/sign-up", 
-      "/user/profile",
-      "/user/security",
-      "/user/account",
-      "/verify"
-    ],
-    // Add session config
-    session: {
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      sameSite: 'strict'
-    }
-  }));
+  app.use(clerkMiddleware());
   
   // Mount auth router
   app.use('/api/auth', router);
