@@ -40,9 +40,20 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Get auth token from Clerk
+      // Get auth token from Clerk  
       const token = await window.Clerk?.session?.getToken();
       const ws = new WebSocket(wsUrl);
+      
+      // Send auth token immediately after connection
+      ws.onopen = () => {
+        if (token) {
+          ws.send(JSON.stringify({ 
+            authorization: `Bearer ${token}`,
+            ...research,
+            userId: user?.id
+          }));
+        }
+      };
       
       // Set auth header after connection
       ws.onopen = () => {

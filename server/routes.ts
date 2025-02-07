@@ -51,9 +51,14 @@ export function registerRoutes(app: Express): Server {
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
     
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.log('WebSocket connection rejected: No auth token');
+    // First message should contain auth token
+    ws.once('message', async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        const authToken = data.authorization;
+        
+        if (!authToken?.startsWith('Bearer ')) {
+          console.log('WebSocket connection rejected: No auth token');
       ws.send(JSON.stringify({
         status: 'ERROR',
         error: 'Authentication required',
