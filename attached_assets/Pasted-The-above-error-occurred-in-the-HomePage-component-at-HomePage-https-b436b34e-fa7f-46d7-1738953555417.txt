@@ -1,0 +1,20 @@
+The above error occurred in the <HomePage> component:
+
+    at HomePage (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/pages/home-page.tsx:40:54)
+    at ProtectedRoute (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/lib/protected-route.tsx:22:3)
+    at Switch (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=3819979c:247:17)
+    at div
+    at Router
+    at ResearchProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-research.tsx:22:36)
+    at AuthProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-auth.tsx:22:32)
+    at QueryClientProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=3819979c:2805:3)
+    at App
+    at SWRConfig (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=3819979c:725:11)
+    at OrganizationProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=3819979c:1621:3)
+    at ClerkContextProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=3819979c:5160:11)
+    at ClerkProviderBase (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=3819979c:5234:11)
+    at Hoc (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=3819979c:3294:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+ShareButton is not defined
