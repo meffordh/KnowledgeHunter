@@ -5,20 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Download } from "lucide-react";
 import { format } from "date-fns";
+import { ShareButton } from "@/components/ui/share-button";
 
 export default function ResearchHistoryPage() {
   const { user } = useAuth();
 
-  const { data: reports, isLoading } = useQuery<ResearchReport[]>({
+  const { data: reports, isLoading, error } = useQuery<ResearchReport[]>({
     queryKey: ["/api/research/history"],
     enabled: !!user,
-    staleTime: 0, // Always fetch fresh data
-    cacheTime: 0, // Don't cache the data
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 10,   // 10 minutes
     retry: 3,
     retryDelay: 1000,
-    onError: (error) => {
-      console.error('Error fetching research history:', error);
-    },
   });
 
   const downloadReport = (report: ResearchReport) => {
@@ -41,7 +39,26 @@ export default function ResearchHistoryPage() {
     );
   }
 
-  console.log('Rendering research history with:', reports?.length, 'reports');
+  if (error) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="text-center text-destructive">
+          <p>Failed to load research history. Please try again later.</p>
+          <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="container mx-auto py-8">
+        <p className="text-center text-muted-foreground">
+          Please sign in to view your research history.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8">
@@ -53,14 +70,21 @@ export default function ResearchHistoryPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span className="text-lg font-semibold">{report.query}</span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => downloadReport(report)}
-                    title="Download Report"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => downloadReport(report)}
+                      title="Download Report"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <ShareButton
+                      content={`Check out my research on: ${report.query}`}
+                      url={window.location.href}
+                      reportId={report.id}
+                    />
+                  </div>
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {format(new Date(report.createdAt || ''), 'PPpp')}

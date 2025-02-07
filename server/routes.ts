@@ -6,7 +6,7 @@ import { setupAuth } from './auth.js';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
 import { storage } from './storage';
-import { postToLinkedIn } from './linkedin'; // Added import for LinkedIn integration
+import { handleLinkedInShare } from './linkedin';
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -14,7 +14,7 @@ export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  app.post('/api/clarify', async (req, res) => {
+  app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
       const query = req.body.query;
       if (!query) {
@@ -29,7 +29,6 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add new endpoint to fetch user's research history
   app.get('/api/research/history', requireAuth(), async (req, res) => {
     const userId = req.auth?.userId;
     console.log('Research history request received for user:', userId);
@@ -45,33 +44,22 @@ export function registerRoutes(app: Express): Server {
       res.json(reports);
     } catch (error) {
       console.error('Error fetching research history:', error);
-      res.status(500).json({ error: 'Failed to fetch research history' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch research history' });
     }
   });
 
-  app.post('/api/social/linkedin/share', requireAuth(), async (req, res) => { // Added LinkedIn share endpoint
+  app.post('/api/social/linkedin/share', requireAuth(), async (req, res) => {
     try {
-      const { content, url, reportId } = req.body;
-      const userId = req.auth?.userId;
-
-      if (!userId) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const result = await postToLinkedIn(req, content, url);
-      const share = await storage.trackLinkedInShare(userId, reportId, result.id);
-
+      const result = await handleLinkedInShare(req);
       res.json({ 
         success: true, 
         postId: result.id,
-        share 
       });
     } catch (error) {
       console.error('LinkedIn share error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to share on LinkedIn' });
     }
   });
-
 
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
