@@ -18,7 +18,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const startResearch = useCallback((research: Research) => {
+  const startResearch = useCallback(async (research: Research) => {
     if (!user) {
       toast({
         title: 'Authentication Required',
