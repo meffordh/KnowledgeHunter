@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { researchSchema, type Research } from '@shared/schema';
 import { useResearch } from '@/hooks/use-research';
 import { Button } from '@/components/ui/button';
+import { ShareButton } from '@/components/ui/share-button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import ReactMarkdown from 'react-markdown';
