@@ -1,24 +1,24 @@
-# ResearchHunter
-
-ResearchHunter is an intelligent web-based research platform designed to simplify complex information gathering through advanced AI-powered authentication and data retrieval mechanisms. The application focuses on robust, scalable OAuth integration with comprehensive error handling and social platform connectivity.
-
-## Features
-
-- AI-powered research assistance using OpenAI GPT-4
-- LinkedIn OAuth authentication with OpenID Connect
-- Real-time research progress tracking via WebSocket
-- Persistent storage with PostgreSQL
-- Comprehensive error handling and logging
-- TypeScript/Node.js backend with Express
-- React frontend with shadcn/ui components
-- WebSocket for real-time communication
-- Firecrawl integration for web crawling
+graph TD
+    A[User Input] --> B[Clarifying Questions]
+    B --> C[Research Parameters]
+    C --> D[Initial Query Processing]
+    D --> E{Depth Level Loop}
+    E --> F[Query Expansion]
+    F --> G[Web Crawling]
+    G --> H[Content Analysis]
+    H --> I[Knowledge Extraction]
+    I --> J{More Depth?}
+    J -->|Yes| E
+    J -->|No| K[Report Generation]
+    K --> L[Source Citation]
+    L --> M[Final Report]
+```
 
 ## Prerequisites
 
 - Node.js 20.x or higher
 - PostgreSQL database
-- LinkedIn Developer account
+- Clerk account
 - OpenAI API key
 - Firecrawl API key
 
@@ -82,41 +82,3 @@ npm run dev
 │   ├── routes.ts        # API routes
 │   └── storage.ts       # Database interface
 └── shared/              # Shared types and schemas
-```
-
-## API Documentation
-
-### Authentication Endpoints
-
-- `POST /api/register` - Register a new user
-- `POST /api/login` - Login with email/password
-- `GET /api/auth/linkedin` - Initiate LinkedIn OAuth flow
-- `GET /api/auth/linkedin/callback` - LinkedIn OAuth callback
-- `POST /api/logout` - Logout current user
-- `GET /api/user` - Get current user information
-
-### Research Endpoints
-
-- `POST /api/clarify` - Generate clarifying questions
-- `GET /api/research/history` - Get user's research history
-- `WebSocket /ws` - Real-time research updates
-
-## Development Guidelines
-
-- Follow the TypeScript coding style
-- Use Drizzle ORM for database operations
-- Implement proper error handling
-- Add comprehensive logging
-- Test authentication flows thoroughly
-
-## License
-
-MIT
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request

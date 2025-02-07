@@ -10,7 +10,7 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Welcome to Deep Research</CardTitle>
+            <CardTitle>Welcome to ResearchHunter</CardTitle>
             <CardDescription>
               Please sign in to continue
             </CardDescription>

@@ -14,7 +14,10 @@ export default function Navbar() {
     <nav className="border-b">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center space-x-8">
-          <Button variant="link" className="text-xl font-bold p-0" onClick={() => navigate("/")}>
+          <Button variant="link" className="text-xl font-bold p-0 flex items-center gap-2" onClick={() => navigate("/")}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             ResearchHunter
           </Button>
           <div className="flex items-center space-x-4">
