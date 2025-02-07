@@ -40,7 +40,14 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
+      // Get auth token from Clerk
+      const token = await window.Clerk?.session?.getToken();
       const ws = new WebSocket(wsUrl);
+      
+      // Set auth header after connection
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'auth', token }));
+      };
 
       ws.onopen = () => {
         console.log('WebSocket connection established');

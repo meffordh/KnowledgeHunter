@@ -48,11 +48,10 @@ export function registerRoutes(app: Express): Server {
 
   wss.on('connection', async (ws, req) => {
     console.log('WebSocket connection attempt');
-
-    // Extract session ID from cookie
-    const cookieHeader = req.headers.cookie;
-    if (!cookieHeader) {
-      console.log('WebSocket connection rejected: No cookie header');
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      console.log('WebSocket connection rejected: No auth token');
       ws.send(JSON.stringify({
         status: 'ERROR',
         error: 'Authentication required',
@@ -64,17 +63,6 @@ export function registerRoutes(app: Express): Server {
       ws.close();
       return;
     }
-
-    // Parse session cookie
-    const cookies = Object.fromEntries(
-      cookieHeader.split(';')
-        .map(cookie => cookie.trim().split('='))
-        .map(([key, value]) => [key, value])
-    );
-
-    const sessionId = cookies['researchhunter.sid'];
-    if (!sessionId) {
-      console.log('WebSocket connection rejected: No session ID');
       ws.send(JSON.stringify({
         status: 'ERROR',
         error: 'Authentication required',
