@@ -1,5 +1,5 @@
 
-import { SignInButton } from "@clerk/clerk-react";
+import { SignInButton, SignOutButton } from "@clerk/clerk-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,15 @@ export default function AuthPage() {
           <CardContent>
             <div className="flex justify-center">
               <SignInButton mode="modal">
-                <Button size="lg">
+                <Button size="lg" className="mr-4">
                   Sign in with Clerk
                 </Button>
               </SignInButton>
+              <SignOutButton>
+                <Button size="lg" variant="outline">
+                  Sign out
+                </Button>
+              </SignOutButton>
             </div>
           </CardContent>
         </Card>

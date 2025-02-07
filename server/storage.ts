@@ -43,6 +43,23 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async createOrUpdateUser(user: { id: string; email: string; name: string; researchCount: number }): Promise<User> {
+    const existingUser = await this.getUser(user.id);
+    if (existingUser) {
+      const [updatedUser] = await db.update(users)
+        .set({ email: user.email, name: user.name })
+        .where(eq(users.id, user.id))
+        .returning();
+      return updatedUser;
+    }
+    return await this.createUser({
+      id: user.id,
+      email: user.email,
+      name: user.name, 
+      researchCount: 0
+    });
+  }
+
   async incrementResearchCount(userId: number): Promise<void> {
     await db.execute(
       sql`UPDATE ${users} SET research_count = research_count + 1 WHERE id = ${userId}`
