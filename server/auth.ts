@@ -1,10 +1,10 @@
 
-import { ClerkExpressRequireAuth } from '@clerk/express';
+import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
 import express from 'express';
 
 const router = express.Router();
 
-const clerkMiddleware = ClerkExpressRequireAuth({});
+const clerkMiddleware = ClerkExpressWithAuth();
 
 // Protected route to get user data
 router.get('/user', clerkMiddleware, (req, res) => {
