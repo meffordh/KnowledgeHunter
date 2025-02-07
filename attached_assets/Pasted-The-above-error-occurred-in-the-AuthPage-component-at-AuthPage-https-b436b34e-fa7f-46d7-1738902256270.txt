@@ -1,0 +1,20 @@
+The above error occurred in the <AuthPage> component:
+
+    at AuthPage (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/pages/auth-page.tsx:36:152)
+    at Route (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2492a543:191:16)
+    at Switch (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=2492a543:247:17)
+    at div
+    at Router
+    at ResearchProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-research.tsx:22:36)
+    at AuthProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-auth.tsx:22:32)
+    at QueryClientProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=1f84eb41:2805:3)
+    at App
+    at SWRConfig (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=af4de6aa:725:11)
+    at OrganizationProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=af4de6aa:1621:3)
+    at ClerkContextProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=af4de6aa:5160:11)
+    at ClerkProviderBase (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=af4de6aa:5234:11)
+    at Hoc (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=af4de6aa:3294:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+SignInButton is not defined
