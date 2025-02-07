@@ -4,15 +4,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AuthPage() {
-  useEffect(() => {
-    const clerkFrontendApi = import.meta.env.VITE_CLERK_FRONTEND_API;
-    if (!clerkFrontendApi) {
-      console.error('Clerk Frontend API URL not configured');
-      return;
-    }
-    window.location.href = `${clerkFrontendApi}/sign-in?redirect_url=${window.location.origin}`;
-  }, []);
-
   return (
     <div className="min-h-screen grid md:grid-cols-2">
       <div className="flex items-center justify-center p-8">
@@ -20,13 +11,17 @@ export default function AuthPage() {
           <CardHeader>
             <CardTitle>Welcome to Deep Research</CardTitle>
             <CardDescription>
-              Redirecting to sign in...
+              Please sign in to continue
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Alert>
-              <AlertDescription>Please wait while we redirect you to the login page...</AlertDescription>
-            </Alert>
+            <div className="flex justify-center">
+              <SignInButton mode="modal">
+                <Button size="lg">
+                  Sign in with Clerk
+                </Button>
+              </SignInButton>
+            </div>
           </CardContent>
         </Card>
       </div>
