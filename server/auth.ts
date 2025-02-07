@@ -1,10 +1,12 @@
+
 import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-express';
 import express from 'express';
 
 const router = express.Router();
 
 const clerkMiddleware = ClerkExpressWithAuth({
-  apiKey: process.env.CLERK_API_KEY,
+  apiKey: process.env.CLERK_SECRET_KEY,
+  jwtKey: process.env.CLERK_PEM_KEY || process.env.CLERK_JWT_ENDPOINT,
 });
 
 // Protected route to get user data
