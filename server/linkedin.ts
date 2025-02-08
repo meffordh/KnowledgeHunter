@@ -24,24 +24,33 @@ interface LinkedInSharePayload {
 }
 
 export async function postToLinkedIn(req: Request, content: string, url: string) {
+  console.log('Starting LinkedIn share process');
+
   if (!req.auth?.userId) {
+    console.error('LinkedIn share failed: User not authenticated');
     throw new Error('User not authenticated');
   }
 
   const token = req.auth.sessionClaims?.['linkedin_oauth_access_token'];
+  console.log('LinkedIn OAuth token present:', !!token);
+
   if (!token) {
+    console.error('LinkedIn share failed: No access token found');
     throw new Error('LinkedIn access token not found. Please connect your LinkedIn account.');
   }
 
+  console.log('Fetching LinkedIn profile');
   const userResponse = await fetch('https://api.linkedin.com/v2/me', {
     headers: { 'Authorization': `Bearer ${token}` }
   });
 
   if (!userResponse.ok) {
+    console.error('LinkedIn profile fetch failed:', await userResponse.text());
     throw new Error('Failed to fetch LinkedIn profile');
   }
 
   const userData = await userResponse.json();
+  console.log('LinkedIn profile fetched successfully');
 
   const payload: LinkedInSharePayload = {
     author: `urn:li:person:${userData.id}`,
@@ -63,6 +72,7 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     }
   };
 
+  console.log('Sending share request to LinkedIn');
   const response = await fetch('https://api.linkedin.com/v2/ugcPosts', {
     method: 'POST',
     headers: {
@@ -76,10 +86,12 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('LinkedIn API error:', errorText);
     throw new Error(`LinkedIn API error: ${errorText}`);
   }
 
   const data = await response.json();
+  console.log('LinkedIn share successful');
 
   // Store the share in the database
   await db.insert(linkedinShares).values({
@@ -92,6 +104,13 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
 }
 
 export async function handleLinkedInShare(req: Request) {
+  console.log('Handling LinkedIn share request', {
+    userId: req.auth?.userId,
+    hasContent: !!req.body.content,
+    hasUrl: !!req.body.url,
+    hasReportId: !!req.body.reportId
+  });
+
   const { content, url, reportId } = req.body;
 
   if (!content || !url || !reportId) {
