@@ -1,0 +1,25 @@
+our task is to implement a feature update/bug fix for the LinkedIn share functionality in the ResearchHunter repository. The current issues are that the share button does not yield a valid token from Clerk for LinkedIn integration, and the token and scope checking logic is inconsistent between the client and backend. Follow these steps:
+
+Client-Side (in client/src/components/ui/share-button.tsx):
+
+Update the token retrieval so that the call to window.Clerk.getToken() is modified (if needed) to request an access token that includes the w_member_social scope. (If an options object is supported by Clerk to request additional scopes, include it.)
+Improve the logic that checks for the required scope. For example, if approved_scopes is returned as a comma-separated string rather than an array, split it into an array before checking for 'w_member_social'.
+Add enhanced error logging and display a clear toast message that instructs users to reconnect their LinkedIn account via account settings if the token is missing or the required scope is absent.
+Capture a screenshot of the modified share button code and any updated UI toast message on error.
+Backend (in server/linkedin.ts):
+
+Update the token handling so that instead of solely relying on the token stored in req.auth.sessionClaims (or extracted from external accounts), the backend will also accept and use the token sent from the client (if valid). This unifies the token source between client and server.
+Enhance scope verification: Ensure that the backend checks whether the approved_scopes (which might be a string) includes 'w_member_social'. Log detailed messages indicating whether the token is present and has the proper scopes.
+Maintain existing logging that outputs whether a LinkedIn account is connected, if the token exists, and whether it has the required permissions.
+Capture a screenshot of the updated backend code (e.g. the token extraction and scope checking in server/linkedin.ts) with the added logs.
+Documentation (in docs/linkedin-share.md):
+
+Update the document to include troubleshooting steps for token and scope issues.
+Reference the following URLs for further guidance:
+Clerk LinkedIn Connection Guide: https://clerk.com/docs/authentication/social-connections/linkedin-oidc#test-your-connection
+LinkedIn Share Documentation: https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin
+Capture a screenshot of the updated documentation file.
+General Instructions:
+
+Ensure that when a user clicks the “Share on LinkedIn” button, the flow retrieves a token that includes the w_member_social permission. If the token is invalid or missing the required scope, display a toast message advising the user to reconnect their LinkedIn account.
+Make sure that debug logging in both the client and server clearly states whether the token is valid, whether the required scope is present, and any errors encountered

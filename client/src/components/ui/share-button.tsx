@@ -40,9 +40,15 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       return;
     }
 
-    // Check if user has LinkedIn connection with proper scopes
+    // Log all external accounts for debugging
+    console.log('Available external accounts:', window.Clerk?.user?.externalAccounts?.map(acc => ({
+      provider: acc.provider,
+      scopes: acc.approved_scopes
+    })));
+
+    // Check if user has LinkedIn connection
     const linkedInAccount = window.Clerk?.user?.externalAccounts?.find(
-      account => account.provider === 'oauth_linkedin_oidc'
+      account => account.provider === 'linkedin' || account.provider === 'oauth_linkedin_oidc'
     );
 
     // Parse scopes string and check for required scope
@@ -51,8 +57,10 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
     console.log('LinkedIn connection status:', {
       accountFound: !!linkedInAccount,
+      provider: linkedInAccount?.provider,
       scopes: scopes.join(', '),
-      hasRequiredScopes
+      hasRequiredScopes,
+      allScopes: linkedInAccount?.approved_scopes
     });
 
     if (!linkedInAccount || !hasRequiredScopes) {
@@ -68,7 +76,7 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     try {
       // Get the session token from Clerk
       const token = await window.Clerk?.getToken({
-        template: 'oauth_linkedin_oidc' // Request LinkedIn-specific token
+        template: linkedInAccount.provider // Use the detected provider
       });
 
       if (!token) {
