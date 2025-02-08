@@ -20,7 +20,7 @@ declare global {
           approved_scopes?: string;
         }>;
       };
-      getToken: () => Promise<string>;
+      getToken: (options?: { template?: string }) => Promise<string>;
     };
   }
 }
@@ -45,12 +45,20 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       account => account.provider === 'oauth_linkedin_oidc'
     );
 
-    const hasRequiredScopes = linkedInAccount?.approved_scopes?.includes('w_member_social');
+    // Parse scopes string and check for required scope
+    const scopes = linkedInAccount?.approved_scopes?.split(' ') || [];
+    const hasRequiredScopes = scopes.includes('w_member_social');
+
+    console.log('LinkedIn connection status:', {
+      accountFound: !!linkedInAccount,
+      scopes: scopes.join(', '),
+      hasRequiredScopes
+    });
 
     if (!linkedInAccount || !hasRequiredScopes) {
       toast({
         title: 'LinkedIn Account Required',
-        description: 'Please connect your LinkedIn account with sharing permissions in your account settings',
+        description: 'Please connect your LinkedIn account with sharing permissions in your account settings. Make sure to grant the "Share on LinkedIn" permission.',
         variant: 'destructive',
       });
       return;
@@ -59,7 +67,9 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     setIsSharing(true);
     try {
       // Get the session token from Clerk
-      const token = await window.Clerk?.getToken();
+      const token = await window.Clerk?.getToken({
+        template: 'oauth_linkedin_oidc' // Request LinkedIn-specific token
+      });
 
       if (!token) {
         throw new Error('Failed to get authentication token');

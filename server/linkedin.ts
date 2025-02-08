@@ -45,6 +45,8 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     access_token?: string;
   }> | undefined;
 
+  console.log('External accounts found:', !!externalAccounts);
+
   const linkedInAccount = externalAccounts?.find(acc => acc.provider === 'oauth_linkedin_oidc');
   const token = linkedInAccount?.access_token;
 
@@ -57,9 +59,12 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     throw new Error('LinkedIn access token not found. Please connect your LinkedIn account.');
   }
 
-  if (!linkedInAccount?.approved_scopes?.includes('w_member_social')) {
+  // Parse scopes string and check for required scope
+  const scopes = linkedInAccount?.approved_scopes?.split(' ') || [];
+  if (!scopes.includes('w_member_social')) {
     console.error('LinkedIn share failed: Missing w_member_social scope');
-    throw new Error('Missing required LinkedIn permissions. Please reconnect your account.');
+    console.error('Available scopes:', scopes.join(', '));
+    throw new Error('Missing required LinkedIn permissions (w_member_social). Please reconnect your account with sharing permissions.');
   }
 
   console.log('Fetching LinkedIn profile');
@@ -67,7 +72,8 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     headers: { 
       'Authorization': `Bearer ${token}`,
       'X-Restli-Protocol-Version': '2.0.0',
-      'LinkedIn-Version': '202401'
+      'LinkedIn-Version': '202401',
+      'Content-Type': 'application/json'
     }
   });
 
