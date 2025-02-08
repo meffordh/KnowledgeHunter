@@ -19,10 +19,8 @@ declare global {
           provider: string;
           approved_scopes?: string;
         }>;
-        session?: {
-          getToken: () => Promise<string>;
-        };
       };
+      getToken: () => Promise<string>;
     };
   }
 }
@@ -61,7 +59,11 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     setIsSharing(true);
     try {
       // Get the session token from Clerk
-      const token = await window.Clerk?.user?.session?.getToken();
+      const token = await window.Clerk?.getToken();
+
+      if (!token) {
+        throw new Error('Failed to get authentication token');
+      }
 
       const response = await fetch('/api/social/linkedin/share', {
         method: 'POST',
