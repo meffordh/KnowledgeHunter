@@ -15,7 +15,7 @@ declare global {
   interface Window {
     Clerk?: {
       user?: {
-        getExternalAccounts: () => Promise<Array<{ provider: string }>>;
+        getSocialAccounts: () => Promise<Array<{ provider: string }>>;
         session?: {
           getToken: () => Promise<string>;
         };
@@ -44,8 +44,8 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       }
 
       // Check for existing LinkedIn connection
-      const externalAccounts = await window.Clerk.user?.getExternalAccounts();
-      const hasLinkedIn = externalAccounts?.some(account => account.provider === 'linkedin');
+      const socialAccounts = await window.Clerk.user?.getSocialAccounts();
+      const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin');
 
       if (!hasLinkedIn) {
         // Open Clerk sign-in with LinkedIn strategy
@@ -79,8 +79,8 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     }
 
     // Check if user has LinkedIn connection
-    const externalAccounts = await window.Clerk?.user?.getExternalAccounts();
-    const hasLinkedIn = externalAccounts?.some(account => account.provider === 'linkedin');
+    const socialAccounts = await window.Clerk?.user?.getSocialAccounts();
+    const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin');
 
     if (!hasLinkedIn) {
       toast({
