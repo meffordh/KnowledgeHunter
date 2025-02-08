@@ -10,7 +10,6 @@ interface ShareButtonProps {
   reportId: number;
 }
 
-// Extend Window interface to include Clerk
 declare global {
   interface Window {
     Clerk?: {
@@ -41,15 +40,18 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     }
 
     // Log all external accounts for debugging
-    console.log('Available external accounts:', window.Clerk?.user?.externalAccounts?.map(acc => ({
+    const externalAccounts = window.Clerk?.user?.externalAccounts || [];
+    console.log('All external accounts:', externalAccounts.map(acc => ({
       provider: acc.provider,
       scopes: acc.approved_scopes
     })));
 
     // Check if user has LinkedIn connection
-    const linkedInAccount = window.Clerk?.user?.externalAccounts?.find(
-      account => account.provider === 'linkedin' || account.provider === 'oauth_linkedin_oidc'
+    const linkedInAccount = externalAccounts.find(
+      account => account.provider === 'oauth_linkedin_oidc'
     );
+
+    console.log('Found LinkedIn account:', linkedInAccount);
 
     // Parse scopes string and check for required scope
     const scopes = linkedInAccount?.approved_scopes?.split(' ') || [];
@@ -76,7 +78,7 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     try {
       // Get the session token from Clerk
       const token = await window.Clerk?.getToken({
-        template: linkedInAccount.provider // Use the detected provider
+        template: 'oauth_linkedin_oidc'
       });
 
       if (!token) {
