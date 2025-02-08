@@ -15,12 +15,19 @@ declare global {
   interface Window {
     Clerk?: {
       user?: {
-        createConnection: (options: {
-          provider: string;
-          redirectUrl: string;
-          scopes: string[];
-        }) => Promise<any>;
+        getExternalAccounts: () => Promise<Array<{ provider: string }>>;
+        session?: {
+          getToken: () => Promise<string>;
+        };
       };
+      openSignIn: (options: {
+        appearance: {
+          elements: { 
+            socialButtonsBlockButton: string;
+          };
+        };
+        afterSignInUrl: string;
+      }) => Promise<void>;
     };
   }
 }
@@ -32,16 +39,25 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
   const connectLinkedIn = async () => {
     try {
-      // Open Clerk OAuth connection for LinkedIn using the user object
-      if (!window.Clerk?.user) {
-        throw new Error('Clerk user not found');
+      if (!window.Clerk) {
+        throw new Error('Clerk not initialized');
       }
 
-      await window.Clerk.user.createConnection({
-        provider: "oauth_linkedin",
-        redirectUrl: window.location.href,
-        scopes: ["w_member_social", "r_liteprofile", "r_emailaddress"]
-      });
+      // Check for existing LinkedIn connection
+      const externalAccounts = await window.Clerk.user?.getExternalAccounts();
+      const hasLinkedIn = externalAccounts?.some(account => account.provider === 'linkedin');
+
+      if (!hasLinkedIn) {
+        // Open Clerk sign-in with LinkedIn strategy
+        await window.Clerk.openSignIn({
+          appearance: {
+            elements: {
+              socialButtonsBlockButton: "linkedin" // Only show LinkedIn button
+            }
+          },
+          afterSignInUrl: window.location.href,
+        });
+      }
     } catch (error) {
       console.error('LinkedIn connection error:', error);
       toast({
@@ -62,12 +78,11 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       return;
     }
 
-    // Check if user has connected LinkedIn
-    const linkedInConnection = user?.externalAccounts?.find(
-      account => account.provider === 'linkedin'
-    );
+    // Check if user has LinkedIn connection
+    const externalAccounts = await window.Clerk?.user?.getExternalAccounts();
+    const hasLinkedIn = externalAccounts?.some(account => account.provider === 'linkedin');
 
-    if (!linkedInConnection) {
+    if (!hasLinkedIn) {
       toast({
         title: 'LinkedIn Account Required',
         description: 'Please connect your LinkedIn account to share research',
