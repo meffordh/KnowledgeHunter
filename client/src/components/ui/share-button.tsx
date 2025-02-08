@@ -17,16 +17,21 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
   const connectLinkedIn = async () => {
     try {
-      // Open Clerk OAuth connection for LinkedIn
-      await window.Clerk?.user?.createExternalAccount({
-        strategy: "oauth_linkedin",
+      // Open Clerk OAuth connection for LinkedIn using the user object
+      if (!window.Clerk?.user) {
+        throw new Error('Clerk user not found');
+      }
+
+      await window.Clerk.user.createConnection({
+        provider: "oauth_linkedin",
         redirectUrl: window.location.href,
+        scopes: ["w_member_social", "r_liteprofile", "r_emailaddress"]
       });
     } catch (error) {
       console.error('LinkedIn connection error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to connect LinkedIn account',
+        description: 'Failed to connect LinkedIn account. Please try again.',
         variant: 'destructive',
       });
     }

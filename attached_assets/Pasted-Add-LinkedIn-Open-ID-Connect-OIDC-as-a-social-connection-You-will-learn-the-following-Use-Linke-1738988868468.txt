@@ -1,0 +1,63 @@
+Add LinkedIn Open ID Connect (OIDC) as a social connection
+You will learn the following:
+Use LinkedIn OIDC to authenticate users with OAuth
+Before you start
+A Clerk app is required.
+A LinkedIn developer account is required.
+Enabling OpenID Connect (OIDC) with LinkedIn allows your users to sign up and sign in to your Clerk application with their LinkedIn account.
+
+Configure for your development instance
+For development instances, Clerk uses preconfigured shared OAuth credentials and redirect URIs — no other configuration is needed.
+
+To configure your development instance, follow these steps:
+
+In the Clerk Dashboard, navigate to the SSO connections page.
+Select the Add connection button and select For all users.
+In the Choose provider dropdown, select LinkedIn.
+Select Add connection.
+Configure for your production instance
+In production instances, you must provide custom credentials, which involves generating your own Client ID and Client Secret using your LinkedIn Developer account.
+
+To make the setup process easier, it's recommended to keep two browser tabs open: one for the Clerk Dashboard and one for your LinkedIn Developer Portal.
+
+Enable LinkedIn as a social connection
+In the Clerk Dashboard, navigate to the SSO connections page.
+Select the Add connection button, and select For all users.
+In the Choose provider dropdown, select LinkedIn.
+Ensure that both Enable for sign-up and sign-in and Use custom credentials are toggled on.
+Save the Redirect URI somewhere secure. Keep this modal and page open.
+Create a LinkedIn application
+Tip
+
+If you already have a LinkedIn app you'd like to connect to Clerk, select your app from the My apps page in the LinkedIn Developer Portal and proceed to the next step in this tutorial.
+
+On the homepage of the LinkedIn Developer Portal, select Create app. You'll be redirected to the Create an app form.
+Fill out the necessary information. Then, select Create app. You'll be redirected to the app's Products page.
+Select the Auth tab.
+Under Application credentials, save the Client ID and Primary Client Secret somewhere secure.
+Under the OAuth 2.0 settings section, next to Authorized redirect URLs for your app, select the Edit icon.
+Select Add redirect URL and paste the Redirect URL you copied from the Clerk Dashboard.
+Select Update.
+Set the Client ID and Primary Client Secret in the Clerk Dashboard
+Navigate back to the Clerk Dashboard where the modal should still be open. Paste the Client ID and Primary Client Secret values that you saved into the respective fields.
+Select Add connection.
+Note
+
+If the modal or page is no longer open, navigate to the SSO connections page in the Clerk Dashboard. Select the connection. Under Use custom credentials, paste the values into their respective fields.
+
+Enable OpenID Connect in your LinkedIn application
+Select the Products tab.
+Next to Sign In with LinkedIn using OpenID Connect, select Request access. A modal will open.
+Follow the instructions and select Request access.
+Note
+
+If you need to ensure the longevity of the user's access token without requiring re-authentication, consider getting approval as a Marketing Developer Platform (MDP) partner. This isn't necessary if you don't directly interact with the LinkedIn API using the access token.
+
+Test your connection
+The simplest way to test your connection is to visit your Clerk app's Account Portal, which is available for all Clerk apps out-of-the-box.
+
+In the Clerk Dashboard, navigate to the Account Portal page.
+Next to the Sign-in URL, select Visit. The URL should resemble:
+For development – https://your-domain.accounts.dev/sign-in
+For production – https://accounts.your-domain.com/sign-in
+Sign in with your connection's credentials.
