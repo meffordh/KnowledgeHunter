@@ -45,14 +45,14 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
       // Check for existing LinkedIn connection
       const socialAccounts = await window.Clerk.user?.getSocialAccounts();
-      const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin');
+      const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin_oidc');
 
       if (!hasLinkedIn) {
         // Open Clerk sign-in with LinkedIn strategy
         await window.Clerk.openSignIn({
           appearance: {
             elements: {
-              socialButtonsBlockButton: "linkedin" // Only show LinkedIn button
+              socialButtonsBlockButton: "linkedin_oidc" // Only show LinkedIn button
             }
           },
           afterSignInUrl: window.location.href,
@@ -80,7 +80,7 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
     // Check if user has LinkedIn connection
     const socialAccounts = await window.Clerk?.user?.getSocialAccounts();
-    const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin');
+    const hasLinkedIn = socialAccounts?.some(account => account.provider === 'linkedin_oidc');
 
     if (!hasLinkedIn) {
       toast({
@@ -93,10 +93,14 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
     setIsSharing(true);
     try {
+      // Get the session token from Clerk
+      const token = await window.Clerk?.session?.getToken();
+
       const response = await fetch('/api/social/linkedin/share', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ content, url, reportId }),
       });
