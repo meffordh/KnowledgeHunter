@@ -10,6 +10,21 @@ interface ShareButtonProps {
   reportId: number;
 }
 
+// Extend Window interface to include Clerk
+declare global {
+  interface Window {
+    Clerk?: {
+      user?: {
+        createConnection: (options: {
+          provider: string;
+          redirectUrl: string;
+          scopes: string[];
+        }) => Promise<any>;
+      };
+    };
+  }
+}
+
 export function ShareButton({ content, url, reportId }: ShareButtonProps) {
   const [isSharing, setIsSharing] = useState(false);
   const { toast } = useToast();
