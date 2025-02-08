@@ -75,8 +75,8 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Failed to share on LinkedIn');
+        const errorText = await response.text();
+        throw new Error(errorText);
       }
 
       const data = await response.json();

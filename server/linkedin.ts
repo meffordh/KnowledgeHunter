@@ -15,6 +15,12 @@ interface LinkedInSharePayload {
       media: [{
         status: 'READY';
         originalUrl: string;
+        description?: {
+          text: string;
+        };
+        title?: {
+          text: string;
+        };
       }];
     };
   };
@@ -60,7 +66,8 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
   const userResponse = await fetch('https://api.linkedin.com/v2/me', {
     headers: { 
       'Authorization': `Bearer ${token}`,
-      'X-Restli-Protocol-Version': '2.0.0'
+      'X-Restli-Protocol-Version': '2.0.0',
+      'LinkedIn-Version': '202401'
     }
   });
 
@@ -83,7 +90,13 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
         shareMediaCategory: 'ARTICLE',
         media: [{
           status: 'READY',
-          originalUrl: url
+          originalUrl: url,
+          description: {
+            text: content.substring(0, 100) // Add a description
+          },
+          title: {
+            text: "Research Insights" // Add a title
+          }
         }]
       }
     },
