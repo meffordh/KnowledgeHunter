@@ -23,14 +23,6 @@ declare global {
           getToken: () => Promise<string>;
         };
       };
-      openSignIn: (options: {
-        appearance: {
-          elements: { 
-            socialButtonsBlockButton: string;
-          };
-        };
-        afterSignInUrl: string;
-      }) => Promise<void>;
     };
   }
 }
@@ -39,31 +31,6 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
   const [isSharing, setIsSharing] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-
-  const connectLinkedIn = async () => {
-    try {
-      if (!window.Clerk) {
-        throw new Error('Clerk not initialized');
-      }
-
-      // Open Clerk sign-in with LinkedIn strategy
-      await window.Clerk.openSignIn({
-        appearance: {
-          elements: {
-            socialButtonsBlockButton: "linkedin_oidc" // Only show LinkedIn button
-          }
-        },
-        afterSignInUrl: window.location.href,
-      });
-    } catch (error) {
-      console.error('LinkedIn connection error:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to connect LinkedIn account. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const handleShare = async () => {
     if (!reportId) {
@@ -77,7 +44,7 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
     // Check if user has LinkedIn connection with proper scopes
     const linkedInAccount = window.Clerk?.user?.externalAccounts?.find(
-      account => account.provider === 'linkedin_oidc'
+      account => account.provider === 'oauth_linkedin_oidc'
     );
 
     const hasRequiredScopes = linkedInAccount?.approved_scopes?.includes('w_member_social');
@@ -85,16 +52,16 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     if (!linkedInAccount || !hasRequiredScopes) {
       toast({
         title: 'LinkedIn Account Required',
-        description: 'Please connect your LinkedIn account to share research',
+        description: 'Please connect your LinkedIn account with sharing permissions in your account settings',
+        variant: 'destructive',
       });
-      await connectLinkedIn();
       return;
     }
 
     setIsSharing(true);
     try {
       // Get the session token from Clerk
-      const token = await window.Clerk?.session?.getToken();
+      const token = await window.Clerk?.user?.session?.getToken();
 
       const response = await fetch('/api/social/linkedin/share', {
         method: 'POST',
