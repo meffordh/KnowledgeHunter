@@ -31,7 +31,19 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     throw new Error('User not authenticated');
   }
 
-  const token = req.auth.sessionClaims?.['linkedin_oauth_access_token'];
+  // Get LinkedIn token from external accounts
+  const externalAccounts = req.auth.sessionClaims?.['external_accounts'] as Array<{
+    provider: string;
+    provider_user_id: string;
+    approved_scopes: string;
+    access_token?: string;
+  }> | undefined;
+
+  const linkedInAccount = externalAccounts?.find(acc => acc.provider === 'oauth_linkedin_oidc');
+  const token = linkedInAccount?.access_token;
+
+  console.log('LinkedIn account found:', !!linkedInAccount);
+  console.log('Scopes:', linkedInAccount?.approved_scopes);
   console.log('LinkedIn OAuth token present:', !!token);
 
   if (!token) {
@@ -39,9 +51,17 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
     throw new Error('LinkedIn access token not found. Please connect your LinkedIn account.');
   }
 
+  if (!linkedInAccount?.approved_scopes?.includes('w_member_social')) {
+    console.error('LinkedIn share failed: Missing w_member_social scope');
+    throw new Error('Missing required LinkedIn permissions. Please reconnect your account.');
+  }
+
   console.log('Fetching LinkedIn profile');
   const userResponse = await fetch('https://api.linkedin.com/v2/me', {
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'X-Restli-Protocol-Version': '2.0.0'
+    }
   });
 
   if (!userResponse.ok) {
@@ -119,7 +139,7 @@ export async function handleLinkedInShare(req: Request) {
 
   const result = await postToLinkedIn(req, content, url);
 
-  // Update user's research count
+  // Update user's share count
   if (req.auth?.userId) {
     await db.update(users)
       .set({ researchCount: db.raw('research_count + 1') })

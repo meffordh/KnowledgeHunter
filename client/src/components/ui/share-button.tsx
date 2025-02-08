@@ -15,7 +15,10 @@ declare global {
   interface Window {
     Clerk?: {
       user?: {
-        externalAccounts?: Array<{ provider: string }>;
+        externalAccounts?: Array<{ 
+          provider: string;
+          approved_scopes?: string;
+        }>;
         session?: {
           getToken: () => Promise<string>;
         };
@@ -72,12 +75,14 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       return;
     }
 
-    // Check if user has LinkedIn connection
-    const hasLinkedIn = window.Clerk?.user?.externalAccounts?.some(
+    // Check if user has LinkedIn connection with proper scopes
+    const linkedInAccount = window.Clerk?.user?.externalAccounts?.find(
       account => account.provider === 'linkedin_oidc'
     );
 
-    if (!hasLinkedIn) {
+    const hasRequiredScopes = linkedInAccount?.approved_scopes?.includes('w_member_social');
+
+    if (!linkedInAccount || !hasRequiredScopes) {
       toast({
         title: 'LinkedIn Account Required',
         description: 'Please connect your LinkedIn account to share research',
