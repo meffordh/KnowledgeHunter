@@ -14,6 +14,49 @@ export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+  // Get report templates
+  app.get('/api/report-templates', requireAuth(), async (_req, res) => {
+    try {
+      const templates = await storage.getReportTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error('Error fetching report templates:', error);
+      res.status(500).json({ error: 'Failed to fetch report templates' });
+    }
+  });
+
+  // Get report customization
+  app.get('/api/reports/:reportId/customize', requireAuth(), async (req, res) => {
+    try {
+      const reportId = parseInt(req.params.reportId);
+      const customization = await storage.getReportCustomization(reportId);
+
+      if (!customization) {
+        return res.status(404).json({ error: 'Report customization not found' });
+      }
+
+      res.json(customization);
+    } catch (error) {
+      console.error('Error fetching report customization:', error);
+      res.status(500).json({ error: 'Failed to fetch report customization' });
+    }
+  });
+
+  // Create or update report customization
+  app.post('/api/reports/:reportId/customize', requireAuth(), async (req, res) => {
+    try {
+      const reportId = parseInt(req.params.reportId);
+      const customization = await storage.createReportCustomization({
+        ...req.body,
+        reportId,
+      });
+      res.json(customization);
+    } catch (error) {
+      console.error('Error creating report customization:', error);
+      res.status(500).json({ error: 'Failed to create report customization' });
+    }
+  });
+
   app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
       const query = req.body.query;

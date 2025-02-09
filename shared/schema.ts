@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, foreignKey, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -26,6 +26,30 @@ export const linkedinShares = pgTable("linkedin_shares", {
   sharedAt: timestamp("shared_at").defaultNow(),
 });
 
+export const reportTemplates = pgTable("report_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  template: text("template").notNull(),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const reportCustomizations = pgTable("report_customizations", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").references(() => researchReports.id),
+  templateId: integer("template_id").references(() => reportTemplates.id),
+  citationStyle: text("citation_style").notNull().default('APA'),
+  metadata: jsonb("metadata").$type<{
+    includeAuthor: boolean;
+    includeDate: boolean;
+    includeKeywords: boolean;
+    customNotes: string;
+  }>(),
+  exportFormat: text("export_format").notNull().default('PDF'),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   researchCount: true,
@@ -40,6 +64,43 @@ export const insertLinkedinShareSchema = createInsertSchema(linkedinShares).omit
   id: true,
   sharedAt: true,
 });
+
+export const insertReportTemplateSchema = createInsertSchema(reportTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertReportCustomizationSchema = createInsertSchema(reportCustomizations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const citationStyleSchema = z.enum(['APA', 'MLA', 'Chicago', 'Harvard', 'Vancouver']);
+export const exportFormatSchema = z.enum(['PDF', 'DOCX', 'HTML']);
+
+export const metadataSchema = z.object({
+  includeAuthor: z.boolean().default(true),
+  includeDate: z.boolean().default(true),
+  includeKeywords: z.boolean().default(true),
+  customNotes: z.string().optional(),
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
+export type ResearchReport = typeof researchReports.$inferSelect;
+export type Research = z.infer<typeof researchSchema>;
+export type ResearchProgress = z.infer<typeof researchProgressSchema>;
+export type InsertLinkedinShare = z.infer<typeof insertLinkedinShareSchema>;
+export type LinkedinShare = typeof linkedinShares.$inferSelect;
+
+export type ReportTemplate = typeof reportTemplates.$inferSelect;
+export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
+export type ReportCustomization = typeof reportCustomizations.$inferSelect;
+export type InsertReportCustomization = z.infer<typeof insertReportCustomizationSchema>;
+export type CitationStyle = z.infer<typeof citationStyleSchema>;
+export type ExportFormat = z.infer<typeof exportFormatSchema>;
+export type Metadata = z.infer<typeof metadataSchema>;
 
 export const researchSchema = z.object({
   query: z.string().min(1, "Query is required"),
@@ -58,12 +119,3 @@ export const researchProgressSchema = z.object({
   report: z.string().optional(),
   visitedUrls: z.array(z.string())
 });
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
-export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
-export type ResearchReport = typeof researchReports.$inferSelect;
-export type Research = z.infer<typeof researchSchema>;
-export type ResearchProgress = z.infer<typeof researchProgressSchema>;
-export type InsertLinkedinShare = z.infer<typeof insertLinkedinShareSchema>;
-export type LinkedinShare = typeof linkedinShares.$inferSelect;

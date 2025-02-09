@@ -3,27 +3,43 @@ import { eq, desc, sql } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
-import { users, researchReports, type User, type InsertUser, type ResearchReport, type InsertResearchReport } from "@shared/schema";
-import crypto from 'crypto'; // Added for UUID generation
+import { 
+  users, 
+  researchReports, 
+  reportTemplates,
+  reportCustomizations,
+  type User, 
+  type InsertUser, 
+  type ResearchReport, 
+  type InsertResearchReport,
+  type ReportTemplate,
+  type ReportCustomization,
+  type InsertReportCustomization 
+} from "@shared/schema";
+import crypto from 'crypto';
 
 const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
-  getUser(id: number): Promise<User | undefined>;
+  getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  incrementResearchCount(userId: number): Promise<void>;
-  getUserResearchCount(userId: number): Promise<number>;
+  incrementResearchCount(userId: string): Promise<void>;
+  getUserResearchCount(userId: string): Promise<number>;
   createResearchReport(report: InsertResearchReport): Promise<ResearchReport>;
-  getUserReports(userId: number): Promise<ResearchReport[]>;
+  getUserReports(userId: string): Promise<ResearchReport[]>;
   sessionStore: session.Store;
   trackLinkedInShare(userId: string, reportId: string, linkedInPostId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}>;
-  getReportShares(reportId: string): Promise< {id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]>;
+  getReportShares(reportId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]>;
+  // Add new methods for report customization
+  getReportTemplates(): Promise<ReportTemplate[]>;
+  getReportCustomization(reportId: number): Promise<ReportCustomization | undefined>;
+  createReportCustomization(customization: InsertReportCustomization): Promise<ReportCustomization>;
 }
 
 export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
-  private shares: {id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[] = []; // In-memory storage for shares - REPLACE WITH DATABASE TABLE
+  private shares: {id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[] = [];
 
   constructor() {
     this.sessionStore = new PostgresSessionStore({
@@ -61,18 +77,18 @@ export class DatabaseStorage implements IStorage {
     return await this.createUser({
       id: user.id,
       email: user.email,
-      name: user.name, 
+      name: user.name,
       researchCount: 0
     });
   }
 
-  async incrementResearchCount(userId: number): Promise<void> {
+  async incrementResearchCount(userId: string): Promise<void> {
     await db.execute(
       sql`UPDATE ${users} SET research_count = research_count + 1 WHERE id = ${userId}`
     );
   }
 
-  async getUserResearchCount(userId: number): Promise<number> {
+  async getUserResearchCount(userId: string): Promise<number> {
     const [user] = await db.select({ count: users.researchCount })
       .from(users)
       .where(eq(users.id, userId));
@@ -86,7 +102,7 @@ export class DatabaseStorage implements IStorage {
     return newReport;
   }
 
-  async getUserReports(userId: number): Promise<ResearchReport[]> {
+  async getUserReports(userId: string): Promise<ResearchReport[]> {
     return await db.select()
       .from(researchReports)
       .where(eq(researchReports.userId, userId))
@@ -101,13 +117,30 @@ export class DatabaseStorage implements IStorage {
       linkedInPostId,
       sharedAt: new Date()
     };
-
     this.shares.push(share);
     return share;
   }
 
   async getReportShares(reportId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]> {
     return this.shares.filter(share => share.reportId === reportId);
+  }
+
+  async getReportTemplates(): Promise<ReportTemplate[]> {
+    return await db.select().from(reportTemplates);
+  }
+
+  async getReportCustomization(reportId: number): Promise<ReportCustomization | undefined> {
+    const [customization] = await db.select()
+      .from(reportCustomizations)
+      .where(eq(reportCustomizations.reportId, reportId));
+    return customization;
+  }
+
+  async createReportCustomization(customization: InsertReportCustomization): Promise<ReportCustomization> {
+    const [newCustomization] = await db.insert(reportCustomizations)
+      .values(customization)
+      .returning();
+    return newCustomization;
   }
 }
 
