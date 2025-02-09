@@ -47,20 +47,28 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
 
   console.log('External accounts found:', !!externalAccounts);
 
+  // Find LinkedIn account
   const linkedInAccount = externalAccounts?.find(acc => acc.provider === 'oauth_linkedin_oidc');
-  const token = linkedInAccount?.access_token;
+  console.log('LinkedIn account status:', {
+    found: !!linkedInAccount,
+    hasToken: !!linkedInAccount?.access_token,
+    scopes: linkedInAccount?.approved_scopes
+  });
 
-  console.log('LinkedIn account found:', !!linkedInAccount);
-  console.log('Scopes:', linkedInAccount?.approved_scopes);
-  console.log('LinkedIn OAuth token present:', !!token);
-
-  if (!token) {
-    console.error('LinkedIn share failed: No access token found');
-    throw new Error('LinkedIn access token not found. Please connect your LinkedIn account.');
+  if (!linkedInAccount) {
+    throw new Error('LinkedIn account not connected. Please connect your LinkedIn account.');
   }
 
-  // Parse scopes string and check for required scope
-  const scopes = linkedInAccount?.approved_scopes?.split(' ') || [];
+  const token = linkedInAccount.access_token;
+  if (!token) {
+    console.error('LinkedIn share failed: No access token found');
+    throw new Error('LinkedIn access token not found. Please reconnect your LinkedIn account.');
+  }
+
+  // Parse scopes and verify w_member_social is present
+  const scopes = linkedInAccount.approved_scopes?.split(' ') || [];
+  console.log('Available LinkedIn scopes:', scopes);
+
   if (!scopes.includes('w_member_social')) {
     console.error('LinkedIn share failed: Missing w_member_social scope');
     console.error('Available scopes:', scopes.join(', '));
@@ -79,7 +87,7 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
 
   if (!userResponse.ok) {
     console.error('LinkedIn profile fetch failed:', await userResponse.text());
-    throw new Error('Failed to fetch LinkedIn profile');
+    throw new Error('Failed to fetch LinkedIn profile. Please reconnect your account.');
   }
 
   const userData = await userResponse.json();
@@ -98,10 +106,10 @@ export async function postToLinkedIn(req: Request, content: string, url: string)
           status: 'READY',
           originalUrl: url,
           description: {
-            text: content.substring(0, 100) // Add a description
+            text: content.substring(0, 100)
           },
           title: {
-            text: "Research Insights" // Add a title
+            text: "Research Insights"
           }
         }]
       }

@@ -17,6 +17,7 @@ declare global {
         externalAccounts?: Array<{ 
           provider: string;
           approved_scopes?: string;
+          access_token?: string;
         }>;
       };
       getToken: (options?: { template?: string }) => Promise<string>;
@@ -39,50 +40,50 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
       return;
     }
 
-    // Log all external accounts for debugging
-    const externalAccounts = window.Clerk?.user?.externalAccounts || [];
-    console.log('All external accounts:', externalAccounts.map(acc => ({
-      provider: acc.provider,
-      scopes: acc.approved_scopes
-    })));
-
-    // Check if user has LinkedIn connection
-    const linkedInAccount = externalAccounts.find(
-      account => account.provider === 'oauth_linkedin_oidc'
-    );
-
-    console.log('Found LinkedIn account:', linkedInAccount);
-
-    // Parse scopes string and check for required scope
-    const scopes = linkedInAccount?.approved_scopes?.split(' ') || [];
-    const hasRequiredScopes = scopes.includes('w_member_social');
-
-    console.log('LinkedIn connection status:', {
-      accountFound: !!linkedInAccount,
-      provider: linkedInAccount?.provider,
-      scopes: scopes.join(', '),
-      hasRequiredScopes,
-      allScopes: linkedInAccount?.approved_scopes
-    });
-
-    if (!linkedInAccount || !hasRequiredScopes) {
-      toast({
-        title: 'LinkedIn Account Required',
-        description: 'Please connect your LinkedIn account with sharing permissions in your account settings. Make sure to grant the "Share on LinkedIn" permission.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsSharing(true);
     try {
-      // Get the session token from Clerk
+      // Get all external accounts and log them
+      const externalAccounts = window.Clerk?.user?.externalAccounts || [];
+      console.log('External accounts:', externalAccounts);
+
+      // Specifically find LinkedIn account
+      const linkedInAccount = externalAccounts.find(
+        acc => acc.provider === 'oauth_linkedin_oidc'
+      );
+
+      console.log('LinkedIn account found:', linkedInAccount);
+
+      // If no LinkedIn account is found, show connect message
+      if (!linkedInAccount) {
+        toast({
+          title: 'LinkedIn Connection Required',
+          description: 'Please connect your LinkedIn account in your account settings.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Check scopes
+      const scopes = linkedInAccount.approved_scopes?.split(' ') || [];
+      console.log('Available scopes:', scopes);
+
+      if (!scopes.includes('w_member_social')) {
+        toast({
+          title: 'Additional Permissions Required',
+          description: 'Please reconnect your LinkedIn account and ensure you grant the "Share on LinkedIn" permission.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setIsSharing(true);
+
+      // Get the LinkedIn-specific token
       const token = await window.Clerk?.getToken({
         template: 'oauth_linkedin_oidc'
       });
 
       if (!token) {
-        throw new Error('Failed to get authentication token');
+        throw new Error('Could not get LinkedIn authentication token. Please try reconnecting your account.');
       }
 
       const response = await fetch('/api/social/linkedin/share', {
@@ -96,7 +97,7 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(errorText);
+        throw new Error(errorText || 'Failed to share on LinkedIn');
       }
 
       const data = await response.json();
@@ -109,8 +110,8 @@ export function ShareButton({ content, url, reportId }: ShareButtonProps) {
     } catch (error) {
       console.error('Share error:', error);
       toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to share on LinkedIn',
+        title: 'Sharing Failed',
+        description: error instanceof Error ? error.message : 'Failed to share on LinkedIn. Please try reconnecting your account.',
         variant: 'destructive',
       });
     } finally {
