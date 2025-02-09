@@ -83,6 +83,9 @@ export function registerRoutes(app: Express): Server {
 
   app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
+      // Ensure proper JSON content type
+      res.setHeader('Content-Type', 'application/json');
+
       const query = req.body.query;
       console.log('[Clarify] Request received with query:', query);
 
@@ -103,10 +106,10 @@ export function registerRoutes(app: Express): Server {
         });
       }
 
-      res.json({ questions });
+      return res.json({ questions });
     } catch (error) {
       console.error('[Clarify] Error generating clarifying questions:', error);
-      res.status(500).json({ 
+      return res.status(500).json({ 
         error: 'Failed to generate clarifying questions',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
