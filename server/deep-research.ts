@@ -16,17 +16,37 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
+const MODEL_CONFIG = {
+  FAST: "gpt-4o-mini-2024-07-18",
+  BALANCED: "gpt-4o-2024-08-06",
+  DEEP: "o3-mini-2025-01-31"
+} as const;
+
 // Token management utilities
-function trimPrompt(text: string, model: string, maxTokens: number = 4000): string {
+function trimPrompt(text: string, model: string): string {
   try {
-    const enc = encodingForModel(model);
+    let maxTokens = 4000; // default
+
+    // Adjust token limit based on model
+    switch(model) {
+      case MODEL_CONFIG.DEEP:
+        maxTokens = 128000;
+        break;
+      case MODEL_CONFIG.BALANCED:
+        maxTokens = 8000;
+        break;
+      case MODEL_CONFIG.FAST:
+        maxTokens = 4000;
+        break;
+    }
+
+    const enc = encodingForModel(model === MODEL_CONFIG.DEEP ? "gpt-4" : model);
     const tokens = enc.encode(text);
 
     if (tokens.length <= maxTokens) {
       return text;
     }
 
-    // Recursive character text splitter implementation
     const chunks: string[] = [];
     let currentChunk = '';
     const sentences = text.split(/(?<=[.!?])\s+/);
@@ -41,7 +61,6 @@ function trimPrompt(text: string, model: string, maxTokens: number = 4000): stri
         chunks.push(currentChunk);
         currentChunk = sentence;
       }
-      // If sentence is too long, split it further
       else {
         const words = sentence.split(/\s+/);
         for (const word of words) {
@@ -59,11 +78,49 @@ function trimPrompt(text: string, model: string, maxTokens: number = 4000): stri
       chunks.push(currentChunk);
     }
 
-    // Return the first chunk that fits within the token limit
     return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
   } catch (error) {
     console.error('Error trimming prompt:', error);
     return text;
+  }
+}
+
+async function determineResearchParameters(query: string): Promise<{ breadth: number; depth: number }> {
+  try {
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.FAST);
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.FAST,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values.'
+        },
+        {
+          role: 'user',
+          content: `Given this research query: "${trimmedQuery}", determine optimal research settings. Consider:
+1. Query complexity and scope
+2. Need for diverse sources (affects breadth)
+3. Need for detailed exploration (affects depth)
+Respond in JSON format with 'breadth' (2-10) and 'depth' (1-5).`
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.log('Invalid AI response for parameter determination, using defaults');
+      return { breadth: 4, depth: 2 };
+    }
+
+    const params = JSON.parse(content);
+    return {
+      breadth: Math.min(Math.max(Math.round(params.breadth), 2), 10),
+      depth: Math.min(Math.max(Math.round(params.depth), 1), 5)
+    };
+  } catch (error) {
+    console.error('Error determining research parameters:', error);
+    return { breadth: 4, depth: 2 }; // Default fallback values
   }
 }
 
@@ -101,7 +158,7 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
 async function determineReportStructure(query: string, learnings: string[]): Promise<string> {
   try {
     const trimmedQuery = trimPrompt(query, "gpt-4o");
-    const trimmedLearnings = learnings.map(l => l.slice(0, 100)).join('\n').slice(0, 500); // Sample of learnings
+    const trimmedLearnings = learnings.map(l => l.slice(0, 100)).join('\n').slice(0, 500); 
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -120,7 +177,7 @@ async function determineReportStructure(query: string, learnings: string[]): Pro
     return response.choices[0]?.message?.content || 'Introduction\nRanked List\nConclusion';
   } catch (error) {
     console.error('Error determining report structure:', error);
-    return 'Introduction\nRanked List\nConclusion'; // Fallback structure
+    return 'Introduction\nRanked List\nConclusion'; 
   }
 }
 
@@ -130,7 +187,6 @@ async function formatReport(query: string, learnings: string[], visitedUrls: str
     const trimmedLearnings = learnings.map(l => trimPrompt(l, "gpt-4o"));
     const trimmedVisitedUrls = visitedUrls.map(url => trimPrompt(url, "gpt-4o"));
 
-    // Get dynamic structure based on query content
     const reportStructure = await determineReportStructure(query, learnings);
     const isRankingQuery = /top|best|ranking|rated|popular/i.test(query);
 
@@ -192,8 +248,8 @@ async function researchQuery(query: string): Promise<{ findings: string[], urls:
     console.log('Starting search for query:', query);
     const searchResults = await firecrawl.search(query, {
       limit: 5,
-      wait: true, // Ensure we wait for results
-      timeout: 30000 // 30 second timeout
+      wait: true, 
+      timeout: 30000 
     });
 
     console.log('Search results:', JSON.stringify(searchResults, null, 2));
@@ -259,30 +315,29 @@ async function handleResearch(
   };
 
   try {
+    const { breadth, depth } = await determineResearchParameters(research.query);
+    const autoResearch = { ...research, breadth, depth };
+
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
     let completedQueries = 0;
-    const totalQueries = research.breadth * research.depth;
+    const totalQueries = autoResearch.breadth * autoResearch.depth;
 
-    // Start research process
     sendProgress({
       status: 'IN_PROGRESS',
-      currentQuery: research.query,
+      currentQuery: autoResearch.query,
       learnings: [],
       progress: 0,
       totalProgress: totalQueries,
       visitedUrls: []
     });
 
-    // Initial query
-    let currentQueries = [research.query];
+    let currentQueries = [autoResearch.query];
 
-    // Conduct research at each depth level
-    for (let depth = 0; depth < research.depth; depth++) {
+    for (let depth = 0; depth < autoResearch.depth; depth++) {
       const newQueries: string[] = [];
 
-      // Process each query at current depth
-      for (let i = 0; i < currentQueries.length && i < research.breadth; i++) {
+      for (let i = 0; i < currentQueries.length && i < autoResearch.breadth; i++) {
         const query = currentQueries[i];
         completedQueries++;
 
@@ -295,38 +350,32 @@ async function handleResearch(
           visitedUrls
         });
 
-        // Research current query
         const { findings, urls } = await researchQuery(query);
         allLearnings.push(...findings);
         visitedUrls.push(...urls);
 
-        // Generate follow-up questions if not at max depth
-        if (depth < research.depth - 1) {
+        if (depth < autoResearch.depth - 1) {
           const followUpQueries = await expandQuery(query);
           newQueries.push(...followUpQueries);
         }
       }
 
-      // Update queries for next depth level
       currentQueries = newQueries;
     }
 
-    // Generate final research report
     console.log('Generating final report with:', {
       queryCount: allLearnings.length,
       learnings: allLearnings,
       urlCount: visitedUrls.length
     });
 
-    const formattedReport = await formatReport(research.query, allLearnings, visitedUrls);
+    const formattedReport = await formatReport(autoResearch.query, allLearnings, visitedUrls);
 
-    // Call the onComplete callback if provided
     if (onComplete) {
       console.log('Calling onComplete callback with report and URLs');
       await onComplete(formattedReport, visitedUrls);
     }
 
-    // Send final progress with formatted report
     sendProgress({
       status: 'COMPLETED',
       learnings: allLearnings,
@@ -343,7 +392,7 @@ async function handleResearch(
       status: 'ERROR',
       learnings: [],
       progress: 0,
-      totalProgress: research.breadth * research.depth,
+      totalProgress: 1,
       error: errorMessage,
       visitedUrls: []
     });

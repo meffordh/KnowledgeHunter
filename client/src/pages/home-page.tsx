@@ -30,8 +30,6 @@ export default function HomePage() {
     resolver: zodResolver(researchSchema),
     defaultValues: {
       query: '',
-      breadth: 4,
-      depth: 2,
     },
   });
 
@@ -150,50 +148,6 @@ export default function HomePage() {
                   </div>
                 )}
 
-                {!showQuestions && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="breadth"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Breadth (2-10)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={2}
-                              max={10}
-                              {...field}
-                              onChange={e => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="depth"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Depth (1-5)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={5}
-                              {...field}
-                              onChange={e => field.onChange(Number(e.target.value))}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
-
                 <Button
                   type="submit"
                   className="w-full"
@@ -260,7 +214,7 @@ export default function HomePage() {
                       <CardContent className="prose dark:prose-invert max-w-none py-4">
                         <div className="flex justify-end mb-4">
                           <ShareButton 
-                            content={`Check out my research on: ${progress.query}`} 
+                            content={`Check out my research on: ${progress.query || ''}`} 
                             url={window.location.href}
                             reportId={progress.id}
                           />

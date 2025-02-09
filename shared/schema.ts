@@ -104,8 +104,6 @@ export type Metadata = z.infer<typeof metadataSchema>;
 
 export const researchSchema = z.object({
   query: z.string().min(1, "Query is required"),
-  breadth: z.number().min(2).max(10),
-  depth: z.number().min(1).max(5),
   clarifications: z.record(z.string(), z.string()).optional(),
 });
 
