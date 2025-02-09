@@ -181,17 +181,57 @@ async function determineReportStructure(query: string, learnings: string[]): Pro
   }
 }
 
+async function determineModelType(query: string): Promise<keyof typeof MODEL_CONFIG> {
+  try {
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.FAST);
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.FAST,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert at determining optimal AI model selection. Analyze queries to determine which model type would be most appropriate.'
+        },
+        {
+          role: 'user',
+          content: `Given this research query: "${trimmedQuery}", determine the optimal model type to use. Consider:
+1. Query complexity and need for deep reasoning
+2. Time sensitivity of the request
+3. Need for extensive context processing
+
+Respond with exactly one of these options: "FAST", "BALANCED", or "DEEP"`
+        }
+      ]
+    });
+
+    const content = response.choices[0]?.message?.content?.trim().toUpperCase();
+    if (content && content in MODEL_CONFIG) {
+      return content as keyof typeof MODEL_CONFIG;
+    }
+
+    return 'BALANCED'; // Default to balanced approach
+  } catch (error) {
+    console.error('Error determining model type:', error);
+    return 'BALANCED'; // Default to balanced approach on error
+  }
+}
+
 async function formatReport(query: string, learnings: string[], visitedUrls: string[]): Promise<string> {
   try {
-    const trimmedQuery = trimPrompt(query, "gpt-4o");
-    const trimmedLearnings = learnings.map(l => trimPrompt(l, "gpt-4o"));
-    const trimmedVisitedUrls = visitedUrls.map(url => trimPrompt(url, "gpt-4o"));
-
-    const reportStructure = await determineReportStructure(query, learnings);
+    // First determine if this is a ranking query
     const isRankingQuery = /top|best|ranking|rated|popular/i.test(query);
 
+    // Select appropriate model based on query complexity
+    const modelType = await determineModelType(query);
+    const model = MODEL_CONFIG[modelType];
+
+    const trimmedQuery = trimPrompt(query, model);
+    const trimmedLearnings = learnings.map(l => trimPrompt(l, model));
+    const trimmedVisitedUrls = visitedUrls.map(url => trimPrompt(url, model));
+
+    const reportStructure = await determineReportStructure(query, learnings);
+
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model,
       messages: [
         {
           role: 'system',
