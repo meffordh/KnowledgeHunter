@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import HomePage from "@/pages/home-page";
 import AuthPage from "@/pages/auth-page";
 import ResearchHistoryPage from "@/pages/research-history";
+import ReportViewPage from "@/pages/report-view";
 import NotFound from "@/pages/not-found";
 import Navbar from "@/components/navbar";
 
@@ -18,6 +19,7 @@ function Router() {
       <Switch>
         <ProtectedRoute path="/" component={HomePage} />
         <ProtectedRoute path="/history" component={ResearchHistoryPage} />
+        <ProtectedRoute path="/reports/:id" component={ReportViewPage} />
         <Route path="/auth" component={AuthPage} />
         <Route component={NotFound} />
       </Switch>

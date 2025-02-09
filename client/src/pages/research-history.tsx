@@ -3,9 +3,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { ResearchReport } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { ShareButton } from "@/components/ui/share-button";
+import { Link } from "wouter";
 
 export default function ResearchHistoryPage() {
   const { user } = useAuth();
@@ -69,7 +70,9 @@ export default function ResearchHistoryPage() {
             <Card key={report.id}>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span className="text-lg font-semibold">{report.query}</span>
+                  <Link href={`/reports/${report.id}`}>
+                    <span className="text-lg font-semibold hover:underline cursor-pointer">{report.query}</span>
+                  </Link>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -79,6 +82,15 @@ export default function ResearchHistoryPage() {
                     >
                       <Download className="h-4 w-4" />
                     </Button>
+                    <Link href={`/reports/${report.id}`}>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="View Full Report"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </Link>
                     <ShareButton
                       content={`Check out my research on: ${report.query}`}
                       url={window.location.href}
