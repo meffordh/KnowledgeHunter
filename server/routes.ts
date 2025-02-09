@@ -84,18 +84,32 @@ export function registerRoutes(app: Express): Server {
   app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
       const query = req.body.query;
+      console.log('[Clarify] Request received with query:', query);
+
       if (!query) {
+        console.log('[Clarify] Error: No query provided');
         return res.status(400).json({ error: 'Query is required' });
       }
 
-      console.log('Generating clarifying questions for query:', query);
+      console.log('[Clarify] Generating clarifying questions for query:', query);
       const questions = await generateClarifyingQuestions(query);
-      console.log('Generated questions:', questions);
+      console.log('[Clarify] Generated questions:', questions);
+
+      if (!Array.isArray(questions) || questions.length === 0) {
+        console.log('[Clarify] Error: Invalid or empty questions array returned');
+        return res.status(500).json({ 
+          error: 'Failed to generate valid clarifying questions',
+          details: 'Questions array was empty or invalid'
+        });
+      }
 
       res.json({ questions });
     } catch (error) {
-      console.error('Error generating clarifying questions:', error);
-      res.status(500).json({ error: 'Failed to generate clarifying questions' });
+      console.error('[Clarify] Error generating clarifying questions:', error);
+      res.status(500).json({ 
+        error: 'Failed to generate clarifying questions',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

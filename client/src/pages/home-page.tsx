@@ -37,6 +37,7 @@ export default function HomePage() {
     if (!showQuestions) {
       // First, get clarifying questions
       try {
+        console.log('Requesting clarifying questions for query:', data.query);
         const response = await fetch('/api/clarify', {
           method: 'POST',
           headers: { 
@@ -46,21 +47,26 @@ export default function HomePage() {
           body: JSON.stringify({ query: data.query }),
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to get clarifying questions');
-        }
-
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Invalid response format');
+          console.error('Invalid content type received:', contentType);
+          throw new Error('Invalid response format from server');
         }
 
-        const { questions } = await response.json();
-        if (!Array.isArray(questions)) {
-          throw new Error('Invalid questions format');
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          console.error('Server returned error:', responseData);
+          throw new Error(responseData.error || 'Failed to get clarifying questions');
         }
 
-        const questionsObj = questions.reduce((acc: Record<string, string>, q: string) => {
+        if (!Array.isArray(responseData.questions) || responseData.questions.length === 0) {
+          console.error('Invalid questions format received:', responseData);
+          throw new Error('Invalid questions format received from server');
+        }
+
+        console.log('Received questions:', responseData.questions);
+        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, q: string) => {
           acc[q] = '';
           return acc;
         }, {});
@@ -71,7 +77,7 @@ export default function HomePage() {
         console.error('Error getting clarifying questions:', error);
         toast({
           title: 'Error',
-          description: 'Failed to generate clarifying questions. Please try again.',
+          description: error instanceof Error ? error.message : 'Failed to generate clarifying questions. Please try again.',
           variant: 'destructive',
         });
       }
