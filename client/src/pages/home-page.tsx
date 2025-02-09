@@ -145,20 +145,28 @@ export default function HomePage() {
 
                 {showQuestions && Object.keys(clarifyingQuestions).length > 0 && (
                   <div className="space-y-4">
-                    <h3 className="font-medium">Please answer these clarifying questions:</h3>
-                    {Object.entries(clarifyingQuestions).map(([question, answer]) => (
-                      <div key={question} className="space-y-2">
-                        <p className="text-sm font-medium">{question}</p>
-                        <Input
-                          value={answer}
-                          onChange={(e) => setClarifyingQuestions(prev => ({
-                            ...prev,
-                            [question]: e.target.value
-                          }))}
-                          placeholder="Your answer..."
-                        />
-                      </div>
-                    ))}
+                    <h3 className="text-lg font-semibold mb-4">Please answer these clarifying questions:</h3>
+                    <div className="space-y-6">
+                      {Object.entries(clarifyingQuestions).map(([question, answer]) => (
+                        <FormItem key={question}>
+                          <FormLabel className="text-sm font-medium text-foreground">{question}</FormLabel>
+                          <FormControl>
+                            <Input
+                              value={answer}
+                              onChange={(e) => setClarifyingQuestions(prev => ({
+                                ...prev,
+                                [question]: e.target.value
+                              }))}
+                              placeholder="Your answer..."
+                              className="mt-1.5"
+                            />
+                          </FormControl>
+                        </FormItem>
+                      ))}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-2">
+                      Providing detailed answers will help us generate more accurate research results.
+                    </div>
                   </div>
                 )}
 
