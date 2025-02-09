@@ -66,8 +66,8 @@ export default function HomePage() {
         }
 
         console.log('Received questions:', responseData.questions);
-        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, q: string) => {
-          acc[q] = '';
+        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, q: { question: string }) => {
+          acc[q.question] = '';
           return acc;
         }, {});
 
@@ -235,7 +235,7 @@ export default function HomePage() {
                       <CardContent className="prose dark:prose-invert max-w-none py-4">
                         <div className="flex justify-end mb-4">
                           <ShareButton 
-                            content={`Check out my research on: ${progress.query || ''}`} 
+                            content={`Check out my research on: ${form.getValues().query}`} 
                             url={window.location.href}
                             reportId={progress.id}
                           />
