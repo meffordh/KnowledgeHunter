@@ -16,10 +16,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
+// Add comments explaining token management
 const MODEL_CONFIG = {
-  FAST: "gpt-4o-mini-2024-07-18",
-  BALANCED: "gpt-4o-2024-08-06",
-  DEEP: "o3-mini-2025-01-31"
+  FAST: "gpt-4o-mini-2024-07-18",    // 4K tokens
+  BALANCED: "gpt-4o-2024-08-06",     // 8K tokens 
+  DEEP: "o3-mini-2025-01-31"         // 128K tokens
 } as const;
 
 // Token management utilities
@@ -30,23 +31,25 @@ function trimPrompt(text: string, model: string): string {
     // Adjust token limit based on model
     switch(model) {
       case MODEL_CONFIG.DEEP:
-        maxTokens = 128000;
+        maxTokens = 128000;  // Large context window for deep analysis
         break;
       case MODEL_CONFIG.BALANCED:
-        maxTokens = 8000;
+        maxTokens = 8000;    // Medium context for balanced analysis
         break;
       case MODEL_CONFIG.FAST:
-        maxTokens = 4000;
+        maxTokens = 4000;    // Small context for quick analysis
         break;
     }
 
     const enc = encodingForModel(model === MODEL_CONFIG.DEEP ? "gpt-4" : model);
     const tokens = enc.encode(text);
 
+    // Only trim if exceeding model's token limit
     if (tokens.length <= maxTokens) {
       return text;
     }
 
+    // Chunk text while preserving sentence boundaries
     const chunks: string[] = [];
     let currentChunk = '';
     const sentences = text.split(/(?<=[.!?])\s+/);
@@ -62,6 +65,7 @@ function trimPrompt(text: string, model: string): string {
         currentChunk = sentence;
       }
       else {
+        // If a single sentence exceeds token limit, split by words
         const words = sentence.split(/\s+/);
         for (const word of words) {
           if (enc.encode(currentChunk + word).length <= maxTokens) {
@@ -78,6 +82,7 @@ function trimPrompt(text: string, model: string): string {
       chunks.push(currentChunk);
     }
 
+    // Return first chunk that fits within token limit
     return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
   } catch (error) {
     console.error('Error trimming prompt:', error);
@@ -189,7 +194,24 @@ async function determineModelType(query: string): Promise<keyof typeof MODEL_CON
       messages: [
         {
           role: 'system',
-          content: 'You are an expert at determining optimal AI model selection. Analyze queries to determine which model type would be most appropriate.'
+          content: `You are an expert at determining optimal AI model selection. Analyze queries to determine which model type would be most appropriate based on the following criteria:
+1. Use FAST for:
+   - Simple fact-finding queries
+   - Time-sensitive requests
+   - Single-topic research
+   - Queries needing quick summaries
+
+2. Use BALANCED for:
+   - Multi-faceted topics
+   - Comparative analysis
+   - Standard research depth
+   - Mixed complexity queries
+
+3. Use DEEP for:
+   - Complex technical topics
+   - Multi-domain research
+   - Queries requiring extensive reasoning
+   - Topics needing thorough analysis of relationships`
         },
         {
           role: 'user',
@@ -217,19 +239,23 @@ Respond with exactly one of these options: "FAST", "BALANCED", or "DEEP"`
 
 async function formatReport(query: string, learnings: string[], visitedUrls: string[]): Promise<string> {
   try {
-    // First determine if this is a ranking query
+    // Step 1: Determine if this is a ranking-style query that needs special formatting
     const isRankingQuery = /top|best|ranking|rated|popular/i.test(query);
 
-    // Select appropriate model based on query complexity
+    // Step 2: Select the appropriate model based on query complexity
     const modelType = await determineModelType(query);
     const model = MODEL_CONFIG[modelType];
 
+    // Step 3: Trim all inputs according to the selected model's token limit
+    // This ensures we can fit as much content as possible while staying within limits
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map(l => trimPrompt(l, model));
     const trimmedVisitedUrls = visitedUrls.map(url => trimPrompt(url, model));
 
+    // Step 4: Get dynamic report structure based on content
     const reportStructure = await determineReportStructure(query, learnings);
 
+    // Step 5: Generate the final report using the appropriate model and formatting
     const response = await openai.chat.completions.create({
       model,
       messages: [
