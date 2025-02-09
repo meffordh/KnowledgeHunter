@@ -39,13 +39,27 @@ export default function HomePage() {
       try {
         const response = await fetch('/api/clarify', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
           body: JSON.stringify({ query: data.query }),
         });
 
-        if (!response.ok) throw new Error('Failed to get clarifying questions');
+        if (!response.ok) {
+          throw new Error('Failed to get clarifying questions');
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Invalid response format');
+        }
 
         const { questions } = await response.json();
+        if (!Array.isArray(questions)) {
+          throw new Error('Invalid questions format');
+        }
+
         const questionsObj = questions.reduce((acc: Record<string, string>, q: string) => {
           acc[q] = '';
           return acc;
@@ -54,9 +68,10 @@ export default function HomePage() {
         setClarifyingQuestions(questionsObj);
         setShowQuestions(true);
       } catch (error) {
+        console.error('Error getting clarifying questions:', error);
         toast({
           title: 'Error',
-          description: 'Failed to generate clarifying questions',
+          description: 'Failed to generate clarifying questions. Please try again.',
           variant: 'destructive',
         });
       }
