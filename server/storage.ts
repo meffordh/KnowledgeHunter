@@ -20,23 +20,27 @@ import crypto from 'crypto';
 
 const PostgresSessionStore = connectPg(session);
 
-export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  incrementResearchCount(userId: string): Promise<void>;
-  getUserResearchCount(userId: string): Promise<number>;
-  createResearchReport(report: InsertResearchReport): Promise<ResearchReport>;
-  getUserReports(userId: string): Promise<ResearchReport[]>;
-  sessionStore: session.Store;
-  trackLinkedInShare(userId: string, reportId: string, linkedInPostId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}>;
-  getReportShares(reportId: string): Promise<{id:string, userId:string, reportId:string, linkedInPostId:string, sharedAt:Date}[]>;
-  // Add new methods for report customization
-  getReportTemplates(): Promise<ReportTemplate[]>;
-  getReportCustomization(reportId: number): Promise<ReportCustomization | undefined>;
-  createReportCustomization(customization: InsertReportCustomization): Promise<ReportCustomization>;
-  getReport(id: number): Promise<ResearchReport | undefined>;
-}
+// Default templates that will be created if none exist
+const DEFAULT_TEMPLATES = [
+  {
+    id: 1,
+    name: "Academic Report",
+    description: "Formal academic style with detailed methodology and citations",
+    structure: "introduction,methodology,findings,conclusion,references"
+  },
+  {
+    id: 2,
+    name: "Executive Summary",
+    description: "Concise business-focused report with key findings and recommendations",
+    structure: "summary,key_findings,recommendations,appendix"
+  },
+  {
+    id: 3,
+    name: "Technical Documentation",
+    description: "Detailed technical report with implementation details and examples",
+    structure: "overview,technical_details,implementation,examples,references"
+  }
+];
 
 export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
@@ -47,6 +51,19 @@ export class DatabaseStorage implements IStorage {
       pool,
       createTableIfMissing: true,
     });
+    this.initializeTemplates();
+  }
+
+  private async initializeTemplates() {
+    try {
+      const existingTemplates = await db.select().from(reportTemplates);
+      if (existingTemplates.length === 0) {
+        await db.insert(reportTemplates).values(DEFAULT_TEMPLATES);
+        console.log('Default report templates created');
+      }
+    } catch (error) {
+      console.error('Error initializing report templates:', error);
+    }
   }
 
   async getUser(id: string): Promise<User | undefined> {

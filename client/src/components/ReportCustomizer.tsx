@@ -1,4 +1,7 @@
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Form,
   FormControl,
@@ -11,15 +14,17 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import type { CitationStyle, ExportFormat, Metadata } from "@shared/schema";
+import type { ReportTemplate } from "@shared/schema";
+
 
 const customizationSchema = z.object({
-  templateId: z.number(),
+  templateId: z.number({
+    required_error: "Please select a template",
+    invalid_type_error: "Please select a valid template",
+  }),
   citationStyle: z.enum(['APA', 'MLA', 'Chicago', 'Harvard', 'Vancouver']),
   metadata: z.object({
     includeAuthor: z.boolean(),
@@ -38,11 +43,16 @@ interface ReportCustomizerProps {
 }
 
 export function ReportCustomizer({ reportId, onComplete }: ReportCustomizerProps) {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: templates = [] } = useQuery({
+  const { data: templates, isLoading: loadingTemplates } = useQuery<ReportTemplate[]>({
     queryKey: ['/api/report-templates'],
-    queryFn: () => apiRequest('/api/report-templates').then(res => res.json()),
+    queryFn: async () => {
+      const response = await fetch('/api/report-templates');
+      if (!response.ok) throw new Error('Failed to fetch templates');
+      return response.json();
+    },
   });
 
   const form = useForm<CustomizationFormData>({
@@ -60,17 +70,33 @@ export function ReportCustomizer({ reportId, onComplete }: ReportCustomizerProps
   });
 
   const mutation = useMutation({
-    mutationFn: async (data: CustomizationFormData) =>
-      apiRequest(`/api/reports/${reportId}/customize`, {
+    mutationFn: async (data: CustomizationFormData) => {
+      const response = await fetch(`/api/reports/${reportId}/customize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(data),
-      }).then(res => res.json()),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to save customization');
+      }
+      return response.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/reports/${reportId}`] });
+      toast({
+        title: "Success",
+        description: "Report customization saved successfully",
+      });
       onComplete?.();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save customization",
+        variant: "destructive",
+      });
     },
   });
 
@@ -83,10 +109,14 @@ export function ReportCustomizer({ reportId, onComplete }: ReportCustomizerProps
           render={({ field }) => (
             <FormItem>
               <FormLabel>Report Template</FormLabel>
-              <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value?.toString()}>
+              <Select 
+                onValueChange={(value) => field.onChange(parseInt(value))} 
+                value={field.value?.toString()}
+                disabled={loadingTemplates}
+              >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a template" />
+                    <SelectValue placeholder={loadingTemplates ? "Loading..." : "Select a template"} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -238,7 +268,11 @@ export function ReportCustomizer({ reportId, onComplete }: ReportCustomizerProps
             </FormItem>
           )}
         />
-        <Button type="submit" className="w-full" disabled={mutation.isPending}>
+        <Button 
+          type="submit" 
+          className="w-full" 
+          disabled={mutation.isPending || !form.formState.isValid}
+        >
           {mutation.isPending ? "Saving..." : "Save Customization"}
         </Button>
       </form>
