@@ -57,6 +57,23 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Get a single report by ID
+  app.get('/api/reports/:id', requireAuth(), async (req, res) => {
+    try {
+      const reportId = parseInt(req.params.id);
+      const report = await storage.getReport(reportId);
+
+      if (!report) {
+        return res.status(404).json({ error: 'Report not found' });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error('Error fetching report:', error);
+      res.status(500).json({ error: 'Failed to fetch report' });
+    }
+  });
+
   app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
       const query = req.body.query;

@@ -35,6 +35,7 @@ export interface IStorage {
   getReportTemplates(): Promise<ReportTemplate[]>;
   getReportCustomization(reportId: number): Promise<ReportCustomization | undefined>;
   createReportCustomization(customization: InsertReportCustomization): Promise<ReportCustomization>;
+  getReport(id: number): Promise<ResearchReport | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -141,6 +142,13 @@ export class DatabaseStorage implements IStorage {
       .values(customization)
       .returning();
     return newCustomization;
+  }
+
+  async getReport(id: number): Promise<ResearchReport | undefined> {
+    const [report] = await db.select()
+      .from(researchReports)
+      .where(eq(researchReports.id, id));
+    return report;
   }
 }
 
