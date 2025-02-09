@@ -26,18 +26,21 @@ const DEFAULT_TEMPLATES = [
     id: 1,
     name: "Academic Report",
     description: "Formal academic style with detailed methodology and citations",
+    template: "# {title}\n\n## Introduction\n{introduction}\n\n## Methodology\n{methodology}\n\n## Findings\n{findings}\n\n## Conclusion\n{conclusion}\n\n## References\n{references}",
     structure: "introduction,methodology,findings,conclusion,references"
   },
   {
     id: 2,
     name: "Executive Summary",
     description: "Concise business-focused report with key findings and recommendations",
+    template: "# Executive Summary: {title}\n\n## Summary\n{summary}\n\n## Key Findings\n{key_findings}\n\n## Recommendations\n{recommendations}\n\n## Appendix\n{appendix}",
     structure: "summary,key_findings,recommendations,appendix"
   },
   {
     id: 3,
     name: "Technical Documentation",
     description: "Detailed technical report with implementation details and examples",
+    template: "# Technical Documentation: {title}\n\n## Overview\n{overview}\n\n## Technical Details\n{technical_details}\n\n## Implementation\n{implementation}\n\n## Examples\n{examples}\n\n## References\n{references}",
     structure: "overview,technical_details,implementation,examples,references"
   }
 ];
@@ -58,7 +61,10 @@ export class DatabaseStorage implements IStorage {
     try {
       const existingTemplates = await db.select().from(reportTemplates);
       if (existingTemplates.length === 0) {
-        await db.insert(reportTemplates).values(DEFAULT_TEMPLATES);
+        console.log('Creating default templates...');
+        for (const template of DEFAULT_TEMPLATES) {
+          await db.insert(reportTemplates).values(template);
+        }
         console.log('Default report templates created');
       }
     } catch (error) {
