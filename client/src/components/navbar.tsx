@@ -12,7 +12,7 @@ export default function Navbar() {
 
   return (
     <motion.nav 
-      className="border-b"
+      className="bg-orange-700"
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.3 }}
@@ -21,7 +21,7 @@ export default function Navbar() {
         <div className="flex items-center space-x-8">
           <Button 
             variant="link" 
-            className="text-xl font-bold p-0 flex items-center gap-2 hover:scale-105 transition-transform" 
+            className="text-xl font-bold p-0 flex items-center gap-2 hover:scale-105 transition-transform text-white" 
             onClick={() => navigate("/")}
           >
             <motion.svg 
@@ -34,20 +34,17 @@ export default function Navbar() {
               transition={{ duration: 0.5 }}
             >
               <path 
-                d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
+                d="M12 3C7.58172 3 4 6.58172 4 11C4 13.9611 5.55972 16.5465 7.93706 17.9297L8 18V21.5059C8 21.7015 8.1189 21.8783 8.30546 21.9586C8.49202 22.0389 8.70876 22.0067 8.86852 21.8749L12.0103 19.3086L12.093 19.3583C12.0622 19.3479 12.0314 19.3374 12 19.3269C16.4183 19.3269 20 15.7452 20 11.3269C20 6.90861 16.4183 3.32689 12 3.32689V3ZM9.64645 9.64645C9.84171 9.45118 10.1583 9.45118 10.3536 9.64645L12 11.2929L13.6464 9.64645C13.8417 9.45118 14.1583 9.45118 14.3536 9.64645C14.5488 9.84171 14.5488 10.1583 14.3536 10.3536L12.7071 12L14.3536 13.6464C14.5488 13.8417 14.5488 14.1583 14.3536 14.3536C14.1583 14.5488 13.8417 14.5488 13.6464 14.3536L12 12.7071L10.3536 14.3536C10.1583 14.5488 9.84171 14.5488 9.64645 14.3536C9.45118 14.1583 9.45118 13.8417 9.64645 13.6464L11.2929 12L9.64645 10.3536C9.45118 10.1583 9.45118 9.84171 9.64645 9.64645Z" 
+                fill="currentColor"
               />
             </motion.svg>
-            ResearchHunter
+            KnowledgeHunter
           </Button>
           <div className="flex items-center space-x-4">
             <motion.div whileHover={{ scale: 1.05 }}>
               <Button 
                 variant="link" 
-                className={`flex items-center space-x-2 p-0 transition-colors duration-200 ${location === '/' ? 'text-primary font-medium' : 'text-muted-foreground hover:text-primary'}`}
+                className={`flex items-center space-x-2 p-0 transition-colors duration-200 text-white/80 hover:text-white ${location === '/' && 'text-white font-medium'}`}
                 onClick={() => navigate("/")}
               >
                 <Search className="h-4 w-4" />
@@ -57,7 +54,7 @@ export default function Navbar() {
             <motion.div whileHover={{ scale: 1.05 }}>
               <Button
                 variant="link"
-                className={`flex items-center space-x-2 p-0 transition-colors duration-200 ${location === '/history' ? 'text-primary font-medium' : 'text-muted-foreground hover:text-primary'}`}
+                className={`flex items-center space-x-2 p-0 transition-colors duration-200 text-white/80 hover:text-white ${location === '/history' && 'text-white font-medium'}`}
                 onClick={() => navigate("/history")}
               >
                 <History className="h-4 w-4" />
@@ -67,14 +64,14 @@ export default function Navbar() {
           </div>
         </div>
         <div className="flex items-center space-x-4">
-          <span className="text-sm text-muted-foreground hidden sm:inline-block">{user.email}</span>
+          <span className="text-sm text-white/80 hidden sm:inline-block">{user.email}</span>
           <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => logoutMutation.mutate()}
               disabled={logoutMutation.isPending}
-              className="hover:bg-destructive/10 hover:text-destructive transition-colors duration-200"
+              className="text-white hover:bg-orange-600/50 hover:text-white/80 transition-colors duration-200"
             >
               <LogOut className="h-4 w-4" />
             </Button>

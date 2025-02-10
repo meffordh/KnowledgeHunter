@@ -1,4 +1,3 @@
-
 import { SignInButton, SignOutButton } from "@clerk/clerk-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,7 +9,7 @@ export default function AuthPage() {
       <div className="flex items-center justify-center p-8">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Welcome to ResearchHunter</CardTitle>
+            <CardTitle>Welcome to KnowledgeHunter</CardTitle>
             <CardDescription>
               Please sign in to continue
             </CardDescription>
