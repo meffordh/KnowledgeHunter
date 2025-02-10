@@ -58,8 +58,8 @@ export default function HomePage() {
         }
 
         // Create an object mapping questions to empty answers
-        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, q) => {
-          acc[q.question] = '';
+        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, question: string) => {
+          acc[question] = '';
           return acc;
         }, {});
 
@@ -149,7 +149,9 @@ export default function HomePage() {
                     <div className="space-y-6">
                       {Object.entries(clarifyingQuestions).map(([question, answer]) => (
                         <FormItem key={question}>
-                          <FormLabel className="text-sm font-medium text-foreground">{question}</FormLabel>
+                          <FormLabel className="text-base font-medium text-foreground">
+                            {question}
+                          </FormLabel>
                           <FormControl>
                             <Input
                               value={answer}
@@ -157,14 +159,14 @@ export default function HomePage() {
                                 ...prev,
                                 [question]: e.target.value
                               }))}
-                              placeholder="Your answer..."
-                              className="mt-1.5"
+                              placeholder="Type your answer here..."
+                              className="mt-2"
                             />
                           </FormControl>
                         </FormItem>
                       ))}
                     </div>
-                    <div className="text-sm text-muted-foreground mt-2">
+                    <div className="text-sm text-muted-foreground mt-4">
                       Providing detailed answers will help us generate more accurate research results.
                     </div>
                   </div>
