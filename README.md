@@ -14,8 +14,6 @@ graph TD
     L --> M[Final Report]
 ```
 
-## Features
-
 ### Advanced Research Capabilities
 - Dynamic query processing with AI-powered analysis
 - Intelligent depth-based exploration
