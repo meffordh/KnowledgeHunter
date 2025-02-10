@@ -3,12 +3,19 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { History, LogOut, Search } from "lucide-react";
 import { motion } from "framer-motion";
+import { useClerk } from "@clerk/clerk-react";
 
 export default function Navbar() {
-  const { user, logoutMutation } = useAuth();
+  const { user } = useAuth();
   const [location, navigate] = useLocation();
+  const { signOut } = useClerk();
 
   if (!user) return null;
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   return (
     <motion.nav 
@@ -69,8 +76,7 @@ export default function Navbar() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
+              onClick={handleSignOut}
               className="text-white hover:bg-orange-600/50 hover:text-white/80 transition-colors duration-200"
             >
               <LogOut className="h-4 w-4" />
