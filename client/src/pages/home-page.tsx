@@ -125,13 +125,7 @@ export default function HomePage() {
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-3xl mx-auto">
         <Card>
-          <CardHeader className="text-2xl font-bold flex items-center gap-2">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            ResearchHunter
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
@@ -139,9 +133,13 @@ export default function HomePage() {
                   name="query"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Research Query</FormLabel>
+                      <FormLabel className="text-xl font-medium">What Would You Like to Research?</FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your research topic..." {...field} />
+                        <Input 
+                          placeholder="Enter your research topic..." 
+                          {...field} 
+                          className="h-14 text-lg mt-2 transition-all duration-200 focus:scale-[1.01]"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -205,7 +203,7 @@ export default function HomePage() {
 
                 <Button
                   type="submit"
-                  className="w-full"
+                  className="w-full h-12 text-lg"
                   disabled={isResearching || isGeneratingQuestions}
                 >
                   {isResearching ? (
