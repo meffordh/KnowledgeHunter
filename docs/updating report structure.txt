@@ -1,0 +1,117 @@
+By following these explicit instructions, you will update the code to:
+
+Produce more variable and detailed report prompts.
+Allow longer output tokens.
+Generate multiple candidate report structures and select one dynamically.
+Adjust model selection to factor in the volume of research data.
+
+Enhance the Final Report Prompt in formatReport
+Locate the Function:
+Open the file server/deep-research.ts and find the function formatReport.
+
+Update the System Message:
+In the call to openai.chat.completions.create inside formatReport, change the system message. Replace the current message with one that instructs the model to produce a detailed, variable report. For example:
+
+js
+Copy
+{
+  role: "system",
+  content: isRankingQuery
+    ? "You are creating a research report that requires a clear ranked list. Ensure that your output is detailed, includes multiple sections, and uses numbered items where applicable. Vary the section headings based on the data, and include subsections if necessary."
+    : "You are creating a detailed and variable research report. Your report should not follow a rigid template. Instead, incorporate dynamic sections (for example, 'Methodology', 'Detailed Findings', 'Comparative Analysis', 'Implications', 'Recommendations', etc.) based on the richness of the research. Use markdown formatting and ensure that the report is very verbose—ideally at least 3000 tokens if context allows."
+}
+Update the User Message:
+Adjust the user message accordingly so that it reinforces the need for expansion. For example:
+
+js
+Copy
+{
+  role: "user",
+  content: `Create a very verbose research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join("\n")}\n\nUse the following dynamic structure as inspiration:\n${reportStructure}\n\nAlso, add a comprehensive Sources section listing these URLs:\n${trimmedVisitedUrls.join("\n")}\n\nDo not default to the same headings every time; tailor your section names to the content provided.`
+}
+2. Increase max_tokens for Report Generation
+Locate the API Call in formatReport:
+Within formatReport, find the openai.chat.completions.create call.
+
+Modify max_tokens:
+Add or update the max_tokens parameter so that it allows for a longer output. For example, change it to:
+
+js
+Copy
+const response = await openai.chat.completions.create({
+  model,
+  messages: [ /* system and user messages as above */ ],
+  max_tokens: 4000  // Increase this value to allow longer responses
+});
+4. Refine Report Structure Determination in determineReportStructure
+Locate determineReportStructure:
+Open the determineReportStructure function.
+
+Modify the Prompt to Generate Multiple Candidate Structures:
+Change the user message so that the model is asked to generate several candidate report structures. For example, update the message content to:
+
+js
+Copy
+{
+  role: "user",
+  content: `Given this research query: "${trimmedQuery}" and these sample findings:\n${trimmedLearnings}\n\nGenerate 3 candidate report structures. Each structure should be a simple list of section headings. Vary the headings based on the nature of the findings. Return the three options separated by a clear delimiter (for example, a line containing only "###").`
+}
+Parse Multiple Structures:
+Once you receive the response, split the response text by your chosen delimiter ("###") to obtain the three candidate structures. Then, select one candidate either at random or by a heuristic (e.g. choose the candidate with the most sections). Replace the original single structure with this selection.
+
+5. Adjust Model Selection Criteria in determineModelType
+Locate determineModelType:
+In the determineModelType function, you currently decide the model purely based on the query text.
+
+Enhance to Consider Data Volume:
+Modify the logic so that it also considers the number of findings or the overall length of aggregated learnings. For example, add an extra check:
+
+js
+Copy
+async function determineModelType(query: string, learnings?: string[]): Promise<keyof typeof MODEL_CONFIG> {
+  try {
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.FAST);
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.FAST,
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at determining optimal AI model selection based on query complexity and research data volume. Analyze the query and, if provided, the number of research findings.`
+        },
+        {
+          role: "user",
+          content: `Given this research query: "${trimmedQuery}", and considering that the total number of research findings is ${learnings ? learnings.length : 0}, determine the optimal model type. Respond with exactly one of these options: "FAST", "BALANCED", or "DEEP".`
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content?.trim().toUpperCase();
+    // Check if learnings are numerous—if so, override to DEEP
+    if (learnings && learnings.length > 100) {
+      return "DEEP";
+    }
+    if (content && content in MODEL_CONFIG) {
+      return content as keyof typeof MODEL_CONFIG;
+    }
+    return "BALANCED"; // Default fallback
+  } catch (error) {
+    console.error("Error determining model type:", error);
+    return "BALANCED";
+  }
+}
+Update Calls to determineModelType:
+When calling determineModelType in formatReport, pass the aggregated learnings (or their count) so that the function can decide appropriately.
+
+Final Notes
+Test Thoroughly:
+After making these changes, manually test with various research queries—especially those that yield many findings and sources—to confirm that the final report is longer, variable, and adapts its structure based on the data.
+
+Logging and Debugging:
+Add log statements as needed to print out the chosen candidate structure, the selected model type, and the final prompt sent to the API. This will help you verify that the dynamic instructions are taking effect.
+
+By following these explicit instructions, you will update the code to:
+
+Produce more variable and detailed report prompts.
+Allow longer output tokens.
+Generate multiple candidate report structures and select one dynamically.
+Adjust model selection to factor in the volume of research data.
