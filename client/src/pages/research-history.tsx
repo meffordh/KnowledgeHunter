@@ -6,18 +6,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Download, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { ShareButton } from "@/components/ui/share-button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ResearchHistoryPage() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: reports, isLoading, error } = useQuery<ResearchReport[]>({
     queryKey: ["/api/research/history"],
     enabled: !!user,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10,   // 10 minutes
-    retry: 3,
+    retry: 1, // Only retry once for auth errors
     retryDelay: 1000,
+    onError: async (error) => {
+      // Check if the error is due to authentication
+      if (error instanceof Error && error.message.includes('JWT is expired')) {
+        toast({
+          title: "Session Expired",
+          description: "Your session has expired. Please sign in again.",
+          variant: "destructive",
+        });
+        await signOut();
+        setLocation('/auth');
+      }
+    }
   });
 
   const downloadReport = (report: ResearchReport) => {
@@ -43,9 +58,24 @@ export default function ResearchHistoryPage() {
   if (error) {
     return (
       <div className="container mx-auto py-8">
-        <div className="text-center text-destructive">
-          <p>Failed to load research history. Please try again later.</p>
-          <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error'}</p>
+        <div className="text-center">
+          <p className="text-destructive text-lg font-medium">
+            {error instanceof Error && error.message.includes('JWT is expired')
+              ? "Your session has expired. Please sign in again."
+              : "Failed to load research history. Please try again later."}
+          </p>
+          {error instanceof Error && !error.message.includes('JWT is expired') && (
+            <p className="text-sm text-muted-foreground mt-2">
+              {error.message}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => setLocation('/auth')}
+          >
+            Sign In
+          </Button>
         </div>
       </div>
     );
@@ -57,6 +87,14 @@ export default function ResearchHistoryPage() {
         <p className="text-center text-muted-foreground">
           Please sign in to view your research history.
         </p>
+        <div className="text-center mt-4">
+          <Button
+            variant="outline"
+            onClick={() => setLocation('/auth')}
+          >
+            Sign In
+          </Button>
+        </div>
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { createContext, useContext, useCallback, useState } from 'react';
 import { Research, ResearchProgress } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
+import { useLocation } from 'wouter';
 
 type ResearchContextType = {
   startResearch: (research: Research) => void;
@@ -16,7 +17,8 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
   const [isResearching, setIsResearching] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const [, setLocation] = useLocation();
 
   const startResearch = useCallback(async (research: Research) => {
     if (!user) {
@@ -25,6 +27,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
         description: 'Please log in to start research.',
         variant: 'destructive',
       });
+      setLocation('/auth');
       return;
     }
 
@@ -34,21 +37,25 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Get the current host and construct WebSocket URL with session cookie
+      // Get the current host and construct WebSocket URL
       const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Get auth token from Clerk  
-      const token = await window.Clerk?.session?.getToken();
+      // Get auth token from Clerk
+      const token = await user.getToken();
+
+      if (!token) {
+        throw new Error('Failed to get authentication token');
+      }
+
       const ws = new WebSocket(wsUrl);
-      
-      // Single onopen handler for authentication and research start
+
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
-        
+
         // Send authentication and research data
         ws.send(JSON.stringify({ 
           authorization: `Bearer ${token}`,
@@ -63,11 +70,22 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           setProgress(progress);
 
           if (progress.status === 'ERROR') {
-            toast({
-              title: 'Research Error',
-              description: progress.error || 'An error occurred during research',
-              variant: 'destructive',
-            });
+            // Check for authentication errors
+            if (progress.error?.toLowerCase().includes('authentication') || 
+                progress.error?.toLowerCase().includes('jwt')) {
+              toast({
+                title: 'Session Expired',
+                description: 'Your session has expired. Please sign in again.',
+                variant: 'destructive',
+              });
+              signOut().then(() => setLocation('/auth'));
+            } else {
+              toast({
+                title: 'Research Error',
+                description: progress.error || 'An error occurred during research',
+                variant: 'destructive',
+              });
+            }
             setIsResearching(false);
             ws.close();
           }
@@ -114,14 +132,26 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       setSocket(ws);
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
-      toast({
-        title: 'Connection Error',
-        description: 'Failed to setup WebSocket connection',
-        variant: 'destructive',
-      });
+
+      // Handle authentication errors
+      if (error instanceof Error && 
+          (error.message.includes('authentication') || error.message.includes('jwt'))) {
+        toast({
+          title: 'Session Expired',
+          description: 'Your session has expired. Please sign in again.',
+          variant: 'destructive',
+        });
+        signOut().then(() => setLocation('/auth'));
+      } else {
+        toast({
+          title: 'Connection Error',
+          description: 'Failed to setup WebSocket connection',
+          variant: 'destructive',
+        });
+      }
       setIsResearching(false);
     }
-  }, [toast, socket, isResearching, user]);
+  }, [toast, socket, isResearching, user, signOut, setLocation]);
 
   return (
     <ResearchContext.Provider value={{ startResearch, progress, isResearching }}>
