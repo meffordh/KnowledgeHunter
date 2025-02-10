@@ -43,8 +43,8 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Get auth token from Clerk
-      const token = await user.getToken();
+      // Get auth token from Clerk session
+      const token = await window.Clerk?.session?.getToken();
 
       if (!token) {
         throw new Error('Failed to get authentication token');
