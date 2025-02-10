@@ -14,6 +14,37 @@ graph TD
     L --> M[Final Report]
 ```
 
+## Features
+
+### Advanced Research Capabilities
+- Dynamic query processing with AI-powered analysis
+- Intelligent depth-based exploration
+- Real-time progress tracking
+- Comprehensive source citations
+- Downloadable research reports
+
+### User Experience
+- Clean, modern interface
+- Real-time progress updates
+- Interactive query refinement
+- Markdown report rendering
+- Share and export options
+
+### AI Integration
+- OpenAI-powered analysis
+- Firecrawl web data extraction
+- Intelligent query expansion
+- Context-aware summarization
+- Source verification
+
+### Technical Features
+- WebSocket real-time updates
+- React with TypeScript
+- Responsive design
+- Authentication system
+- PostgreSQL database
+- RESTful API endpoints
+
 ## Prerequisites
 
 - Node.js 20.x or higher
@@ -44,8 +75,8 @@ CLERK_SECRET_KEY=your_clerk_secret_key
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/meffordh/knowledge-hunter.git
-cd knowledge-hunter
+git clone https://github.com/meffordh/KnowledgeHunter.git
+cd KnowledgeHunter
 ```
 
 2. Install dependencies:
