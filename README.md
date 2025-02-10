@@ -1,3 +1,6 @@
+# KnowledgeHunter
+
+```mermaid
 graph TD
     A[User Input] --> B[Clarifying Questions]
     B --> C[Research Parameters]
@@ -106,3 +109,4 @@ npm run dev
 │   ├── routes.ts        # API routes
 │   └── storage.ts       # Database interface
 └── shared/              # Shared types and schemas
+```
