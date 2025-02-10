@@ -123,8 +123,26 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="max-w-3xl mx-auto">
-        <Card>
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-8 space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-2"
+          >
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+              Turn complex topics into
+              <br />
+              <span className="text-orange-600">actionable insights</span>
+            </h1>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Harness AI-powered research to analyze, synthesize, and deliver comprehensive knowledge from multiple sources. Get detailed reports in minutes, not hours.
+            </p>
+          </motion.div>
+        </div>
+
+        <Card className="border-2 transition-all duration-200 hover:border-orange-200">
           <CardContent className="pt-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
