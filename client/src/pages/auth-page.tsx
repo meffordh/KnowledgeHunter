@@ -5,31 +5,24 @@ import { Button } from "@/components/ui/button";
 
 export default function AuthPage() {
   return (
-    <div className="min-h-screen grid md:grid-cols-2">
-      <div className="flex items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Welcome to KnowledgeHunter</CardTitle>
-            <CardDescription>
-              Please sign in to continue
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-center">
-              <SignInButton mode="modal">
-                <Button size="lg" className="mr-4">
-                  Sign in with Clerk
-                </Button>
-              </SignInButton>
-              <SignOutButton>
-                <Button size="lg" variant="outline">
-                  Sign out
-                </Button>
-              </SignOutButton>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Card className="w-full max-w-md mx-4">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Welcome to KnowledgeHunter</CardTitle>
+          <CardDescription>
+            Please sign in to continue
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-4 items-center">
+            <SignInButton mode="modal">
+              <Button size="lg" className="w-full">
+                Sign in with Clerk
+              </Button>
+            </SignInButton>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
