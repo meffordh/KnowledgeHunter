@@ -44,7 +44,7 @@ CLERK_SECRET_KEY=your_clerk_secret_key
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/knowledge-hunter.git
+git clone https://github.com/meffordh/knowledge-hunter.git
 cd knowledge-hunter
 ```
 
