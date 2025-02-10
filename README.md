@@ -1,22 +1,3 @@
-
-# ResearchHunter
-
-ResearchHunter is an intelligent web-based research platform designed to simplify complex information gathering through advanced AI-powered authentication and data retrieval mechanisms. The application focuses on robust, scalable OAuth integration with comprehensive error handling and social platform connectivity.
-
-## Features
-
-- AI-powered research assistance using OpenAI o3-mini
-- Clerk authentication and user management
-- Real-time research progress tracking via WebSocket
-- Persistent storage with PostgreSQL
-- Comprehensive error handling and logging
-- TypeScript/Node.js backend with Express
-- React frontend with shadcn/ui components
-- WebSocket for real-time communication
-- Firecrawl integration for web crawling
-
-## Research Process
-```mermaid
 graph TD
     A[User Input] --> B[Clarifying Questions]
     B --> C[Research Parameters]
@@ -63,8 +44,8 @@ CLERK_SECRET_KEY=your_clerk_secret_key
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/research-hunter.git
-cd research-hunter
+git clone https://github.com/yourusername/knowledge-hunter.git
+cd knowledge-hunter
 ```
 
 2. Install dependencies:
@@ -96,4 +77,3 @@ npm run dev
 │   ├── routes.ts        # API routes
 │   └── storage.ts       # Database interface
 └── shared/              # Shared types and schemas
-```
