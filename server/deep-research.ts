@@ -198,72 +198,83 @@ async function determineReportStructure(
   learnings: string[],
 ): Promise<string> {
   try {
-    const trimmedQuery = trimPrompt(query, "gpt-4o");
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
     const trimmedLearnings = learnings
       .map((l) => l.slice(0, 100))
       .join("\n")
       .slice(0, 500);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: MODEL_CONFIG.BALANCED,
       messages: [
         {
           role: "system",
-          content:
-            "You are an expert at determining the most appropriate structure for research reports. If the query asks for a ranked list or top N items, ensure the structure emphasizes that list format. Consider the nature of the query and findings to suggest the most suitable sections.",
+          content: `You are an expert at determining optimal research report structures. You analyze queries and findings to suggest the most effective way to present research results. For ranking queries, emphasize structured, numbered lists. Generate multiple candidate structures and select the most appropriate one based on the content.`,
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}" and sample findings like:\n${trimmedLearnings}\n\nProvide a report structure that would best present this information. If this is a "top N" or ranking query, make sure to include a numbered list section. Return only the section names in a simple list format.`,
+          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 different report structure candidates. Each structure should be a list of section headings tailored to the content. If this is a ranking or "top N" query, ensure at least one candidate emphasizes numbered listings.\n\nSeparate each candidate with "###". Choose the best candidate based on content fit and return only that structure.`,
         },
       ],
+      temperature: 0.7,
     });
 
-    return (
-      response.choices[0]?.message?.content ||
-      "Introduction\nRanked List\nConclusion"
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
+    }
+
+    // Split into candidates and select the best one
+    const candidates = content.split("###").map(c => c.trim());
+    // If the response didn't include multiple candidates, return the whole content
+    if (candidates.length === 1) {
+      return candidates[0];
+    }
+
+    // Filter out any empty candidates and return the most detailed one
+    const validCandidates = candidates.filter(c => c.length > 0);
+    // Select the candidate with the most sections as it's likely the most detailed
+    return validCandidates.reduce((a, b) => 
+      (a.split("\n").length > b.split("\n").length) ? a : b,
+      validCandidates[0] || "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources"
     );
   } catch (error) {
     console.error("Error determining report structure:", error);
-    return "Introduction\nRanked List\nConclusion";
+    return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
   }
 }
 
 async function determineModelType(
   query: string,
+  learnings?: string[],
 ): Promise<keyof typeof MODEL_CONFIG> {
   try {
+    // If we have a large volume of learnings, default to DEEP
+    if (learnings && learnings.length > 100) {
+      return "DEEP";
+    }
+
     const trimmedQuery = trimPrompt(query, MODEL_CONFIG.FAST);
     const response = await openai.chat.completions.create({
       model: MODEL_CONFIG.FAST,
       messages: [
         {
           role: "system",
-          content: `You are an expert at determining optimal AI model selection. Analyze queries to determine which model type would be most appropriate based on the following criteria:
-1. Use FAST for:
-   - Simple fact-finding queries
-   - Time-sensitive requests
-   - Single-topic research
-   - Queries needing quick summaries
+          content: `You are an expert at determining optimal AI model selection based on query complexity and research data volume. Analyze queries to determine which model type would be most appropriate:
 
-2. Use BALANCED for:
-   - Multi-faceted topics
-   - Comparative analysis
-   - Standard research depth
-   - Mixed complexity queries
-
-3. Use DEEP for:
-   - Complex technical topics
-   - Multi-domain research
-   - Queries requiring extensive reasoning
-   - Topics needing thorough analysis of relationships`,
+FAST: For simple fact-finding, time-sensitive requests, single-topic research
+BALANCED: For multi-faceted topics, comparative analysis, mixed complexity
+DEEP: For complex technical topics, multi-domain research, extensive reasoning needs`,
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}", determine the optimal model type to use. Consider:
+          content: `Given this research query: "${trimmedQuery}", and considering that the total number of research findings is ${
+            learnings?.length || 0
+          }, determine the optimal model type. Consider:
 1. Query complexity and need for deep reasoning
 2. Time sensitivity of the request
-3. Need for extensive context processing
+3. Amount of context processing needed
+4. Volume of research data to analyze
 
 Respond with exactly one of these options: "FAST", "BALANCED", or "DEEP"`,
         },
@@ -288,41 +299,53 @@ async function formatReport(
   visitedUrls: string[],
 ): Promise<string> {
   try {
-    // Step 1: Determine if this is a ranking-style query that needs special formatting
-    const isRankingQuery = /top|best|ranking|rated|popular/i.test(query);
+    // Determine if this is a ranking-style query
+    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(query);
 
-    // Step 2: Select the appropriate model based on query complexity
-    const modelType = await determineModelType(query);
+    // Select model based on complexity and data volume
+    const modelType = await determineModelType(query, learnings);
     const model = MODEL_CONFIG[modelType];
 
-    // Step 3: Trim all inputs according to the selected model's token limit
-    // This ensures we can fit as much content as possible while staying within limits
+    // Trim inputs according to the selected model's token limit
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
 
-    // Step 4: Get dynamic report structure based on content
+    // Get dynamic report structure
     const reportStructure = await determineReportStructure(query, learnings);
 
-    // Step 5: Generate the final report using the appropriate model and formatting
     const response = await openai.chat.completions.create({
       model,
       messages: [
         {
           role: "system",
           content: isRankingQuery
-            ? "You are creating a research report that requires a clear ranked list. Ensure the ranking is explicit and numbered. Maintain the requested ranking count (e.g., top 10) and format using markdown. Each ranked item should have a clear title and supporting details."
-            : "You are creating a detailed research report that presents information in a clear, structured format using markdown.",
+            ? `You are creating a detailed research report that requires clear rankings. Ensure that:
+               1. The ranking is explicit and numbered
+               2. Each ranked item has a clear title and comprehensive supporting details
+               3. The report maintains any specific ranking count (e.g., top 10)
+               4. The content is extensively detailed, using 3000+ tokens if context allows
+               5. Formatting uses markdown for optimal readability
+               6. Sections follow the provided structure but adapt based on content`
+            : `You are creating a comprehensive research report that:
+               1. Avoids rigid templates and uses dynamic sections based on content
+               2. Provides extensive detail using 3000+ tokens if context allows
+               3. Incorporates clear examples and specific data points
+               4. Uses markdown formatting for optimal readability
+               5. Maintains logical flow between sections
+               6. Adapts section content based on available research depth`,
         },
         {
           role: "user",
-          content: `Create a very verbose research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join(
-            "\n",
-          )}\n\nUse this structure:\n${reportStructure}\n\nAdd a Sources section at the end listing these URLs:\n${trimmedVisitedUrls.join(
-            "\n",
-          )}\n\nUse markdown formatting. ${isRankingQuery ? "Ensure rankings are clearly numbered and each item has supporting details." : ""}`,
+          content: `Create a very detailed research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join("\n")}\n\nFollow this structure:\n${reportStructure}\n\nInclude a comprehensive Sources section with these URLs:\n${trimmedVisitedUrls.join("\n")}\n\n${
+            isRankingQuery
+              ? "Ensure rankings are clearly numbered with detailed explanations for each item."
+              : "Provide extensive analysis and insights throughout each section."
+          }`,
         },
       ],
+      temperature: 0.7,
+      max_tokens: model === MODEL_CONFIG.DEEP ? 4000 : 2000,
     });
 
     return response.choices[0]?.message?.content || "Error generating report";
