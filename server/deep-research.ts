@@ -20,9 +20,9 @@ const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
 // Add comments explaining token management
 const MODEL_CONFIG = {
-  FAST: "gpt-4o-mini-2024-07-18", // 4K tokens
-  BALANCED: "gpt-4o-2024-08-06", // 8K tokens
-  DEEP: "o3-mini-2025-01-31", // 128K tokens
+  FAST: "gpt-3.5-turbo", // 4K tokens
+  BALANCED: "gpt-4", // 8K tokens
+  DEEP: "gpt-4-turbo-preview", // 128K tokens
 } as const;
 
 // Token management utilities
@@ -36,14 +36,21 @@ function trimPrompt(text: string, model: string): string {
         maxTokens = 128000; // Large context window for deep analysis
         break;
       case MODEL_CONFIG.BALANCED:
-        maxTokens = 16000; // Medium context for balanced analysis
+        maxTokens = 8000; // Medium context for balanced analysis
         break;
       case MODEL_CONFIG.FAST:
-        maxTokens = 16000; // Small context for quick analysis
+        maxTokens = 4000; // Small context for quick analysis
         break;
     }
 
-    const enc = encodingForModel(model === MODEL_CONFIG.DEEP ? "gpt-4" : model);
+    // Map our model names to tiktoken model names
+    const tiktokenModel = model === MODEL_CONFIG.DEEP 
+      ? "gpt-4"
+      : model === MODEL_CONFIG.BALANCED 
+        ? "gpt-4"
+        : "gpt-3.5-turbo";
+
+    const enc = encodingForModel(tiktokenModel);
     const tokens = enc.encode(text);
 
     // Only trim if exceeding model's token limit
@@ -139,15 +146,16 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
   try {
     const trimmedQuery = trimPrompt(query, MODEL_CONFIG.FAST);
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.FAST,
+      model: MODEL_CONFIG.BALANCED,
       messages: [
         {
           role: "system",
-          content: "You are a research assistant tasked with generating clarifying questions to refine research queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema. Do not include any additional commentary or HTML."
+          content:
+            "You are a research assistant tasked with generating clarifying questions to refine research queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema. Do not include any additional commentary, whitespace, or HTML. Your output should be directly parseable as JSON without any modification whatsoever.",
         },
         {
           role: "user",
-          content: `Generate clarifying questions for this research query: "${trimmedQuery}"`
+          content: `Generate clarifying questions for this research query: "${trimmedQuery}"`,
         },
       ],
       response_format: {
@@ -161,16 +169,16 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
               questions: {
                 type: "array",
                 items: {
-                  type: "string"
-                }
-              }
+                  type: "string",
+                },
+              },
             },
             required: ["questions"],
-            additionalProperties: false
-          }
-        }
+            additionalProperties: false,
+          },
+        },
       },
-      max_tokens: 1500
+      max_tokens: 1500,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -180,7 +188,10 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
     }
 
     const parsedResponse = JSON.parse(content);
-    if (!Array.isArray(parsedResponse.questions) || parsedResponse.questions.length === 0) {
+    if (
+      !Array.isArray(parsedResponse.questions) ||
+      parsedResponse.questions.length === 0
+    ) {
       console.error("Invalid questions format in response:", parsedResponse);
       return ["What specific aspects of this topic interest you the most?"];
     }
@@ -225,18 +236,19 @@ async function determineReportStructure(
     }
 
     // Split into candidates and select the best one
-    const candidates = content.split("###").map(c => c.trim());
+    const candidates = content.split("###").map((c) => c.trim());
     // If the response didn't include multiple candidates, return the whole content
     if (candidates.length === 1) {
       return candidates[0];
     }
 
     // Filter out any empty candidates and return the most detailed one
-    const validCandidates = candidates.filter(c => c.length > 0);
+    const validCandidates = candidates.filter((c) => c.length > 0);
     // Select the candidate with the most sections as it's likely the most detailed
-    return validCandidates.reduce((a, b) => 
-      (a.split("\n").length > b.split("\n").length) ? a : b,
-      validCandidates[0] || "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources"
+    return validCandidates.reduce(
+      (a, b) => (a.split("\n").length > b.split("\n").length ? a : b),
+      validCandidates[0] ||
+        "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources",
     );
   } catch (error) {
     console.error("Error determining report structure:", error);
@@ -306,6 +318,8 @@ async function formatReport(
     const modelType = await determineModelType(query, learnings);
     const model = MODEL_CONFIG[modelType];
 
+    console.log("Selected model:", model, "for type:", modelType);
+
     // Trim inputs according to the selected model's token limit
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
@@ -313,6 +327,15 @@ async function formatReport(
 
     // Get dynamic report structure
     const reportStructure = await determineReportStructure(query, learnings);
+
+    // Calculate available tokens for response based on model
+    const maxResponseTokens = model === MODEL_CONFIG.DEEP 
+      ? 4000 
+      : model === MODEL_CONFIG.BALANCED 
+        ? 2000 
+        : 1000;
+
+    console.log("Using max tokens:", maxResponseTokens);
 
     const response = await openai.chat.completions.create({
       model,
@@ -345,21 +368,30 @@ async function formatReport(
         },
       ],
       temperature: 0.7,
-      max_tokens: model === MODEL_CONFIG.DEEP ? 4000 : 2000,
+      max_tokens: maxResponseTokens,
     });
 
-    return response.choices[0]?.message?.content || "Error generating report";
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error("No content received from OpenAI");
+      return "Error: No content received from the AI model. Please try again.";
+    }
+
+    return content;
   } catch (error) {
     console.error("Error formatting report:", error);
-    return "Error generating research report";
+    if (error instanceof Error) {
+      return `Error generating research report: ${error.message}`;
+    }
+    return "Error generating research report. Please try again.";
   }
 }
 
 async function expandQuery(query: string): Promise<string[]> {
   try {
-    const trimmedQuery = trimPrompt(query, "gpt-4o");
+    const trimmedQuery = trimPrompt(query, "chatgpt-4o-latest");
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "chatgpt-4o-latest",
       messages: [
         {
           role: "user",
@@ -413,9 +445,9 @@ async function researchQuery(
       return { findings: ["No relevant information found."], urls: [] };
     }
 
-    const trimmedContext = trimPrompt(context, "gpt-4o");
+    const trimmedContext = trimPrompt(context, "chatgpt-4o-latest");
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "chatgpt-4o-latest",
       messages: [
         {
           role: "user",
