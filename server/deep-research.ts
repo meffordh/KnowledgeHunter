@@ -28,7 +28,7 @@ const MODEL_CONFIG = {
 // Token management utilities
 function trimPrompt(text: string, model: string): string {
   try {
-    let maxTokens = 4000; // default
+    let maxTokens = 8000; // default
 
     // Adjust token limit based on model
     switch (model) {
@@ -143,11 +143,11 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
       messages: [
         {
           role: "system",
-          content: "You are an expert at generating clarifying questions. Generate 3 focused questions that will help better understand the research requirements.",
+          content: "You are an expert at generating clarifying questions. You must return exactly 3 questions in a specific JSON format with an array of question objects. Each question object must have a 'question' field containing the question text.",
         },
         {
           role: "user",
-          content: `Generate 3 clarifying questions for this research query: "${trimmedQuery}". Return them in a JSON array format.`,
+          content: `For this research query: "${trimmedQuery}", generate 3 focused clarifying questions to better understand the user's requirements. Return in this exact format: {"questions": [{"question": "first question"}, {"question": "second question"}, {"question": "third question"}]}`,
         },
       ],
       response_format: { type: "json_object" },
@@ -159,13 +159,15 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
       return ["What specific aspects of this topic interest you the most?"];
     }
 
-    const result = JSON.parse(content);
-    if (!Array.isArray(result.questions) || result.questions.length === 0) {
-      console.error("Invalid questions format in response:", result);
+    const parsedResponse = JSON.parse(content);
+    if (!Array.isArray(parsedResponse.questions) || parsedResponse.questions.length === 0) {
+      console.error("Invalid questions format in response:", parsedResponse);
       return ["What specific aspects of this topic interest you the most?"];
     }
 
-    return result.questions.slice(0, 3);
+    // Extract just the question strings from the question objects
+    const questions = parsedResponse.questions.map(q => q.question);
+    return questions.slice(0, 3);
   } catch (error) {
     console.error("Error generating clarifying questions:", error);
     return ["What specific aspects of this topic interest you the most?"];
@@ -295,13 +297,7 @@ async function formatReport(
         },
         {
           role: "user",
-          content: `Create a research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join(
-            "\n",
-          )}\n\nUse this structure:\n${reportStructure}\n\nAdd a Sources section at the end listing these URLs:\n${trimmedVisitedUrls.join(
-            "\n",
-          )}\n\nUse markdown formatting. ${isRankingQuery
-            ? "Ensure rankings are clearly numbered and each item has supporting details."
-            : ""}`,
+          content: `Create a very verbose research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join("\n")}\n\nUse this structure:\n${reportStructure}\n\nAdd a Sources section at the end listing these URLs:\n${trimmedVisitedUrls.join("\n")}\n\nUse markdown formatting. ${isRankingQuery ? "Ensure rankings are clearly numbered and each item has supporting details." : ""}`,
         },
       ],
     });
