@@ -19,7 +19,7 @@ const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
 // Only two model modes are used: BALANCED and DEEP.
 const MODEL_CONFIG = {
-  BALANCED: "chatgpt-4o-latest", // assumed 8K context window
+  BALANCED: "gpt-4o-2024-11-20", // assumed 8K context window
   DEEP: "o3-mini-2025-01-31", // 128K tokens for extensive analysis
 } as const;
 
@@ -178,7 +178,7 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
           },
         },
       },
-      max_tokens: 1500,
+      max_completion_tokens: 1500,
     });
     const content = response.choices[0]?.message?.content;
     if (!content || !content.trim().startsWith("{")) {
@@ -225,7 +225,6 @@ async function determineReportStructure(
           content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 report structure candidates. Return them separated by "###", then choose the best candidate and output only that structure.`,
         },
       ],
-      temperature: 0.7,
     });
     const content = response.choices[0]?.message?.content;
     if (!content) {
@@ -330,9 +329,8 @@ async function formatReport(
           }`,
         },
       ],
-      temperature: 0.7,
       // Increase max_tokens to allow for longer output. Here we allow 6000 tokens for DEEP mode and 4000 for BALANCED.
-      max_tokens: model === MODEL_CONFIG.DEEP ? 8000 : 4000,
+      max_completion_tokens: model === MODEL_CONFIG.DEEP ? 8000 : 4000,
     });
     return response.choices[0]?.message?.content || "Error generating report";
   } catch (error) {
