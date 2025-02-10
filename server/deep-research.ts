@@ -14,19 +14,22 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
   );
 }
 
-// Use models that support json_schema structured outputs
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
+
+// Only two model modes are used: BALANCED and DEEP.
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-08-06", // Supported for Structured Outputs (8K window, but actual context up to 128K tokens)
-  DEEP: "o3-mini-2025-01-31", // For deep reasoning tasks with large context window
+  BALANCED: "chatgpt-4o-latest", // assumed 8K context window
+  DEEP: "o3-mini-2025-01-31", // 128K tokens for extensive analysis
 } as const;
 
-// Utility function to trim text based on the token limit of the selected model.
+// Utility: trimPrompt
+// This function trims input text only if its token count exceeds the allowed limit.
+// It splits the text into chunks along sentence boundaries.
 function trimPrompt(text: string, model: string): string {
   try {
-    let maxTokens = 8000; // default fallback
-
-    // Adjust token limits per model.
-    // (BALANCED: 16K tokens allowed; DEEP: 128K tokens allowed)
+    let maxTokens = 8000; // default
+    // Adjust token limit based on the selected model.
     switch (model) {
       case MODEL_CONFIG.DEEP:
         maxTokens = 128000;
@@ -36,11 +39,13 @@ function trimPrompt(text: string, model: string): string {
         maxTokens = 16000;
         break;
     }
+    // Use a slightly different encoder for DEEP mode if needed.
     const enc = encodingForModel(model === MODEL_CONFIG.DEEP ? "gpt-4" : model);
     const tokens = enc.encode(text);
-    if (tokens.length <= maxTokens) return text;
-
-    // Split text into chunks on sentence boundaries.
+    if (tokens.length <= maxTokens) {
+      return text;
+    }
+    // Chunk text while preserving sentence boundaries.
     const chunks: string[] = [];
     let currentChunk = "";
     const sentences = text.split(/(?<=[.!?])\s+/);
@@ -53,7 +58,7 @@ function trimPrompt(text: string, model: string): string {
         chunks.push(currentChunk);
         currentChunk = sentence;
       } else {
-        // If a single sentence exceeds the limit, split it by words.
+        // If a single sentence is too long, split by words.
         const words = sentence.split(/\s+/);
         for (const word of words) {
           if (enc.encode(currentChunk + word).length <= maxTokens) {
@@ -65,8 +70,11 @@ function trimPrompt(text: string, model: string): string {
         }
       }
     }
-    if (currentChunk) chunks.push(currentChunk);
-    // Return the first chunk that fits.
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+    // Instead of returning only the first chunk, consider concatenating multiple chunks if needed.
+    // Here we simply return the first chunk.
     return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
   } catch (error) {
     console.error("Error trimming prompt:", error);
@@ -74,11 +82,8 @@ function trimPrompt(text: string, model: string): string {
   }
 }
 
-// -----------------------
-// Parameter Determination
-// -----------------------
-// Use the BALANCED model to determine research parameters.
-// The response is forced to strictly adhere to the JSON schema.
+// Determine research parameters using a structured JSON schema response.
+// We now use only the BALANCED model for parameter determination.
 async function determineResearchParameters(
   query: string,
 ): Promise<{ breadth: number; depth: number }> {
@@ -90,7 +95,7 @@ async function determineResearchParameters(
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research parameters. Analyze the query's complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values.",
+            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values.",
         },
         {
           role: "user",
@@ -98,9 +103,10 @@ async function determineResearchParameters(
 1. Query complexity and scope
 2. Need for diverse sources (affects breadth)
 3. Need for detailed exploration (affects depth)
-Respond strictly in JSON format with keys "breadth" and "depth".`,
+Respond in JSON format with keys "breadth" and "depth".`,
         },
       ],
+      // Use structured outputs via json_schema for guaranteed schema adherence.
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -119,7 +125,6 @@ Respond strictly in JSON format with keys "breadth" and "depth".`,
       },
     });
     const content = response.choices[0]?.message?.content;
-    // Defensive check: ensure response looks like JSON.
     if (!content || !content.trim().startsWith("{")) {
       console.log(
         "Invalid AI response for parameter determination, using defaults",
@@ -137,10 +142,8 @@ Respond strictly in JSON format with keys "breadth" and "depth".`,
   }
 }
 
-// -------------------------------
-// Clarifying Questions Generation
-// -------------------------------
-// Use the BALANCED model with json_schema structured outputs to generate clarifying questions.
+// Generate clarifying questions using Structured Outputs.
+// We use the BALANCED model and a json_schema response format to enforce valid JSON.
 async function generateClarifyingQuestions(query: string): Promise<string[]> {
   try {
     const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
@@ -150,7 +153,7 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
         {
           role: "system",
           content:
-            "You are a research assistant tasked with generating clarifying questions to refine research queries. Output must strictly adhere to the provided JSON schema with no extra commentary or HTML.",
+            "You are a research assistant tasked with generating clarifying questions to refine research queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema. Do not include any additional commentary, whitespace, or HTML. Output only valid JSON.",
         },
         {
           role: "user",
@@ -197,12 +200,8 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
   }
 }
 
-// --------------------------
-// Report Structure Determination
-// --------------------------
-// Use the BALANCED model to generate multiple candidate report structures.
-// In this refactor we instruct the model to return three candidates separated by "###"
-// and then select the candidate with the most sections.
+// Determine report structure by asking the model for candidate outlines.
+// We use the BALANCED model and instruct it to return multiple candidates separated by a delimiter.
 async function determineReportStructure(
   query: string,
   learnings: string[],
@@ -219,11 +218,11 @@ async function determineReportStructure(
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research report structures. Analyze the query and sample findings to suggest three candidate structures (as lists of section headings), separated by '###'. Then, choose the best candidate and return only that structure.",
+            "You are an expert at determining optimal research report structures. Analyze the query and sample findings to suggest multiple candidate structures. Each candidate should be a list of section headings tailored to the content. Separate candidates with '###'.",
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 report structure candidates. Separate each candidate with "###".`,
+          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 report structure candidates. Return them separated by "###", then choose the best candidate and output only that structure.`,
         },
       ],
       temperature: 0.7,
@@ -239,7 +238,7 @@ async function determineReportStructure(
     if (candidates.length === 0) {
       return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
     }
-    // Select candidate with the most sections (most newline breaks)
+    // Choose the candidate with the most sections.
     return candidates.reduce((a, b) =>
       a.split("\n").length > b.split("\n").length ? a : b,
     );
@@ -249,20 +248,38 @@ async function determineReportStructure(
   }
 }
 
-// --------------------------
-// Model Selection Logic
-// --------------------------
-// We decide between BALANCED and DEEP modes.
-// If there is a very large volume of findings (e.g., > 100 items), use DEEP.
+// Determine the optimal model type based on the query and volume of learnings.
+// Since we have removed FAST mode, we only decide between BALANCED and DEEP.
 async function determineModelType(
   query: string,
   learnings?: string[],
 ): Promise<keyof typeof MODEL_CONFIG> {
   try {
+    // If there is a very large volume of learnings, use DEEP mode.
     if (learnings && learnings.length > 100) {
       return "DEEP";
     }
-    // Otherwise, default to BALANCED.
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.BALANCED,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an expert at determining optimal AI model selection based on query complexity and research data volume. Choose between BALANCED and DEEP modes based on the following criteria:\n\nBALANCED: For multi-faceted topics with moderate complexity and data volume.\nDEEP: For complex technical topics or when there are many findings requiring extensive context.",
+        },
+        {
+          role: "user",
+          content: `Given this research query: "${trimmedQuery}" and a total of ${
+            learnings?.length || 0
+          } findings, respond with exactly one option: "BALANCED" or "DEEP".`,
+        },
+      ],
+    });
+    const content = response.choices[0]?.message?.content?.trim().toUpperCase();
+    if (content && content in MODEL_CONFIG) {
+      return content as keyof typeof MODEL_CONFIG;
+    }
     return "BALANCED";
   } catch (error) {
     console.error("Error determining model type:", error);
@@ -270,25 +287,26 @@ async function determineModelType(
   }
 }
 
-// --------------------------
-// Final Report Generation
-// --------------------------
-// Generate a detailed, dynamic research report using either the BALANCED or DEEP model.
-// The prompt instructs the model to produce an extensive markdown-formatted report.
+// Generate a verbose, dynamic research report.
+// This function uses the selected model (BALANCED or DEEP) and instructs the model to produce a detailed report.
 async function formatReport(
   query: string,
   learnings: string[],
   visitedUrls: string[],
 ): Promise<string> {
   try {
+    // Check if the query suggests a ranking-style report.
     const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(
       query,
     );
+    // Determine model type based on query and learnings.
     const modelType = await determineModelType(query, learnings);
     const model = MODEL_CONFIG[modelType];
+    // Trim inputs using the selected model.
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
+    // Get dynamic report structure.
     const reportStructure = await determineReportStructure(query, learnings);
     const response = await openai.chat.completions.create({
       model,
@@ -296,12 +314,16 @@ async function formatReport(
         {
           role: "system",
           content: isRankingQuery
-            ? `You are creating a detailed research report that requires clear, numbered rankings. Your report must be very verbose (aim for at least 3000 tokens if context allows), use markdown formatting, and adapt section headings based on the content provided.`
-            : `You are creating a comprehensive research report with dynamic sections tailored to the content. Provide extensive details (aim for at least 3000 tokens if context allows) and use markdown formatting for clarity.`,
+            ? `You are creating a detailed research report that requires clear, numbered rankings. Ensure each item is explained comprehensively. Use markdown formatting and generate a verbose report (at least 3000 tokens if context permits). Adapt section headings dynamically based on the provided structure.`
+            : `You are creating a comprehensive and dynamic research report. Avoid rigid templates. Instead, use dynamic sections tailored to the content, provide extensive details (aim for at least 3000 tokens if context permits), and use markdown formatting for clarity.`,
         },
         {
           role: "user",
-          content: `Create a very detailed research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join("\n")}\n\nFollow this structure:\n${reportStructure}\n\nInclude a comprehensive Sources section with these URLs:\n${trimmedVisitedUrls.join("\n")}\n\n${
+          content: `Create a very detailed research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join(
+            "\n",
+          )}\n\nFollow this structure:\n${reportStructure}\n\nInclude a comprehensive Sources section with these URLs:\n${trimmedVisitedUrls.join(
+            "\n",
+          )}\n\n${
             isRankingQuery
               ? "Ensure rankings are clearly numbered with detailed explanations for each item."
               : "Provide extensive analysis and insights throughout each section."
@@ -309,7 +331,8 @@ async function formatReport(
         },
       ],
       temperature: 0.7,
-      max_tokens: model === MODEL_CONFIG.DEEP ? 6000 : 4000,
+      // Increase max_tokens to allow for longer output. Here we allow 6000 tokens for DEEP mode and 4000 for BALANCED.
+      max_tokens: model === MODEL_CONFIG.DEEP ? 8000 : 4000,
     });
     return response.choices[0]?.message?.content || "Error generating report";
   } catch (error) {
@@ -318,9 +341,7 @@ async function formatReport(
   }
 }
 
-// --------------------------
-// Expand Query: Generate Follow-Up Questions
-// --------------------------
+// Generate follow-up queries for a given query using the BALANCED model.
 async function expandQuery(query: string): Promise<string[]> {
   try {
     const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
@@ -349,9 +370,7 @@ async function expandQuery(query: string): Promise<string[]> {
   }
 }
 
-// --------------------------
-// Research Query: Search for Findings and URLs
-// --------------------------
+// Perform a web search using Firecrawl to gather findings and URLs for a query.
 async function researchQuery(
   query: string,
 ): Promise<{ findings: string[]; urls: string[] }> {
@@ -404,20 +423,16 @@ async function researchQuery(
     console.error("Error researching query:", error);
     return {
       findings: [
-        `Error while researching: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Error while researching: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       ],
       urls: [],
     };
   }
 }
 
-// --------------------------
-// Main Research Handler
-// --------------------------
-// This function orchestrates the research process:
-// - Determines research parameters
-// - Gathers findings through web search and follow-up queries
-// - Generates a detailed final report
+// Main research handler: aggregates findings and generates the final report.
 async function handleResearch(
   research: Research,
   ws: WebSocket,
