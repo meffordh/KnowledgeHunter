@@ -1,0 +1,60 @@
+Verifying the Response and Augmenting It Based on OpenAI’s Documentation
+1. Why Could the API Return HTML or Unstructured Text?
+Unexpected Format on Error:
+If your request isn’t set up properly—for example, if the prompt does not clearly instruct the model to output JSON or if an error occurs—the API may return a full HTML error page (or plain text) instead of a JSON object. This is common when the request parameters aren’t accepted or if there’s a server error.
+
+Lack of Clear Instructions:
+Even if you set the response_format flag, the prompt must include explicit instructions (or keywords like “json”) so the model knows to respond in JSON only. Without these explicit cues, the model might append additional commentary or non-JSON text.
+
+2. How to Properly Instruct the API to Return Strictly Structured JSON
+According to the OpenAI docs, to enforce structured outputs you need to include a response_format field in your API request that specifies a JSON schema. Here’s an example (from the docs and community examples) you can use for your clarifying questions API:
+
+json
+Copy
+"response_format": {
+  "type": "json_schema",
+  "json_schema": {
+    "name": "clarifying_questions",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "questions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["questions"],
+      "additionalProperties": false
+    }
+  }
+}
+Key Points:
+
+type: "json_schema" and strict: true:
+This tells the model to adhere exactly to your provided JSON Schema. The docs emphasize that when strict mode is enabled, the model will try to generate output that matches exactly—with no extra keys or stray text.
+
+Clear Schema Definition:
+The schema must include a complete definition of the object structure (all required fields, types, and with "additionalProperties": false to prevent extraneous keys). This reduces the chance of non-JSON or HTML responses.
+
+Explicit Prompting:
+OpenAI’s guidelines recommend that your prompt should include an explicit mention of “json” so that the model understands it must respond solely in JSON format. For example, your system or user message might say, “Return your answer strictly as a valid JSON object.”
+
+3. Defensive Programming on the Client Side
+Even when using Structured Outputs, it is wise to add robust error handling in your deep-research.ts code:
+
+Schema Validation:
+Use a JSON schema validator (or a library like Zod or Pydantic) to check that the output strictly matches your defined schema. If it does not (for example, if HTML is returned), you can log the error and use default fallback behavior.
+
+Error Handling for HTML/Unstructured Text:
+If your JSON parse attempt fails, catch the error and notify the user (via a toast message) or trigger a retry of the API request.
+
+4. Additional Considerations from the Documentation
+Supported Models:
+OpenAI’s docs note that Structured Outputs (with strict JSON schema enforcement) are supported on models such as gpt-4o-2024-08-06 and gpt-4o-mini-2024-07-18. Ensure you’re using one of these models.
+
+Context and Token Limits:
+The docs also emphasize that the output (including any reasoning tokens) must not exceed the context window. If your model output is truncated (or if it exceeds max_tokens), you might get incomplete JSON. Adjust your max_tokens parameter accordingly.
+
+Prompt Requirements:
+To further guarantee a JSON output, include clear instructions in your prompt. For instance, add a note such as “Return your entire response as a JSON object that conforms to the provided schema.”

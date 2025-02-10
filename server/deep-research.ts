@@ -143,14 +143,34 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
       messages: [
         {
           role: "system",
-          content: "You are an expert at generating clarifying questions. You must return exactly 3 questions in a specific JSON format with an array of question objects. Each question object must have a 'question' field containing the question text.",
+          content: "You are a research assistant tasked with generating clarifying questions to refine research queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema. Do not include any additional commentary or HTML."
         },
         {
           role: "user",
-          content: `For this research query: "${trimmedQuery}", generate 3 focused clarifying questions to better understand the user's requirements. Return in this exact format: {"questions": [{"question": "first question"}, {"question": "second question"}, {"question": "third question"}]}`,
+          content: `Generate clarifying questions for this research query: "${trimmedQuery}"`
         },
       ],
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "clarifying_questions",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              questions: {
+                type: "array",
+                items: {
+                  type: "string"
+                }
+              }
+            },
+            required: ["questions"],
+            additionalProperties: false
+          }
+        }
+      },
+      max_tokens: 1500
     });
 
     const content = response.choices[0]?.message?.content;
@@ -165,9 +185,8 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
       return ["What specific aspects of this topic interest you the most?"];
     }
 
-    // Extract just the question strings from the question objects
-    const questions = parsedResponse.questions.map(q => q.question);
-    return questions.slice(0, 3);
+    // Only return up to 3 questions
+    return parsedResponse.questions.slice(0, 3);
   } catch (error) {
     console.error("Error generating clarifying questions:", error);
     return ["What specific aspects of this topic interest you the most?"];
@@ -297,7 +316,11 @@ async function formatReport(
         },
         {
           role: "user",
-          content: `Create a very verbose research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join("\n")}\n\nUse this structure:\n${reportStructure}\n\nAdd a Sources section at the end listing these URLs:\n${trimmedVisitedUrls.join("\n")}\n\nUse markdown formatting. ${isRankingQuery ? "Ensure rankings are clearly numbered and each item has supporting details." : ""}`,
+          content: `Create a very verbose research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join(
+            "\n",
+          )}\n\nUse this structure:\n${reportStructure}\n\nAdd a Sources section at the end listing these URLs:\n${trimmedVisitedUrls.join(
+            "\n",
+          )}\n\nUse markdown formatting. ${isRankingQuery ? "Ensure rankings are clearly numbered and each item has supporting details." : ""}`,
         },
       ],
     });
