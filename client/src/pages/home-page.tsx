@@ -19,12 +19,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Loader2, Search, Copy, Download, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
   const { toast } = useToast();
   const [clarifyingQuestions, setClarifyingQuestions] = useState<Record<string, string>>({});
   const [showQuestions, setShowQuestions] = useState(false);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
 
   const form = useForm<Research>({
     resolver: zodResolver(researchSchema),
@@ -36,6 +38,7 @@ export default function HomePage() {
   const onSubmit = async (data: Research) => {
     if (!showQuestions) {
       try {
+        setIsGeneratingQuestions(true);
         console.log('Requesting clarifying questions for query:', data.query);
         const response = await fetch('/api/clarify', {
           method: 'POST',
@@ -72,6 +75,8 @@ export default function HomePage() {
           description: error instanceof Error ? error.message : 'Failed to generate clarifying questions. Please try again.',
           variant: 'destructive',
         });
+      } finally {
+        setIsGeneratingQuestions(false);
       }
     } else {
       // Start research with clarifications
@@ -143,39 +148,65 @@ export default function HomePage() {
                   )}
                 />
 
-                {showQuestions && Object.keys(clarifyingQuestions).length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold mb-4">Please answer these clarifying questions:</h3>
-                    <div className="space-y-6">
-                      {Object.entries(clarifyingQuestions).map(([question, answer]) => (
-                        <FormItem key={question}>
-                          <FormLabel className="text-base font-medium text-foreground">
-                            {question}
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              value={answer}
-                              onChange={(e) => setClarifyingQuestions(prev => ({
-                                ...prev,
-                                [question]: e.target.value
-                              }))}
-                              placeholder="Type your answer here..."
-                              className="mt-2"
-                            />
-                          </FormControl>
-                        </FormItem>
-                      ))}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-4">
-                      Providing detailed answers will help us generate more accurate research results.
-                    </div>
-                  </div>
-                )}
+                <AnimatePresence>
+                  {isGeneratingQuestions && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex items-center justify-center gap-2 text-muted-foreground"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Generating clarifying questions...</span>
+                    </motion.div>
+                  )}
+
+                  {showQuestions && Object.keys(clarifyingQuestions).length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-4"
+                    >
+                      <h3 className="text-lg font-semibold mb-4">Please answer these clarifying questions:</h3>
+                      <div className="space-y-6">
+                        {Object.entries(clarifyingQuestions).map(([question, answer], index) => (
+                          <motion.div
+                            key={question}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                          >
+                            <FormItem>
+                              <FormLabel className="text-base font-medium text-foreground">
+                                {question}
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  value={answer}
+                                  onChange={(e) => setClarifyingQuestions(prev => ({
+                                    ...prev,
+                                    [question]: e.target.value
+                                  }))}
+                                  placeholder="Type your answer here..."
+                                  className="mt-2"
+                                />
+                              </FormControl>
+                            </FormItem>
+                          </motion.div>
+                        ))}
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-4">
+                        Providing detailed answers will help us generate more accurate research results.
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={isResearching}
+                  disabled={isResearching || isGeneratingQuestions}
                 >
                   {isResearching ? (
                     <>
@@ -186,6 +217,11 @@ export default function HomePage() {
                     <>
                       <Search className="mr-2 h-4 w-4" />
                       Start Research
+                    </>
+                  ) : isGeneratingQuestions ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating Questions...
                     </>
                   ) : (
                     <>
