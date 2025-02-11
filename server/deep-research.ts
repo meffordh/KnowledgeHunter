@@ -24,24 +24,6 @@ const MODEL_CONFIG = {
   MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing due to its cost-efficient capabilities
 } as const;
 
-// Add validateUrl function after the MODEL_CONFIG declaration and before detectMediaContent
-// This function checks if a URL is valid and accessible
-async function validateUrl(url: string): Promise<boolean> {
-  try {
-    // Use a HEAD request to check if the URL resolves
-    const response = await fetch(url, { 
-      method: 'HEAD',
-      // Add timeout to prevent hanging on slow responses
-      signal: AbortSignal.timeout(5000)
-    });
-    return response.ok; // returns true if status is 200-299
-  } catch (error) {
-    console.error(`Error validating URL: ${url}`, error);
-    return false;
-  }
-}
-
-
 // Utility: trimPrompt
 // This function trims input text only if its token count exceeds the allowed limit.
 // It splits the text into chunks along sentence boundaries.
@@ -238,11 +220,11 @@ async function determineReportStructure(
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research report structures. Analyze the query and sample findings to suggest multiple candidate structures. Each candidate should be a list of section headings tailored to the content. Separate candidates with '###'.",
+            "You are an expert at determining optimal content structures. Analyze the query and sample findings to suggest multiple content structures. Each option should be a list of section headings tailored to the content. Separate options with '###'.",
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 report structure candidates. Return them separated by "###", then choose the best candidate and output only that structure.`,
+          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 content structure candidates. Return them separated by "###", then choose the best candidate and output only that structure.`,
         },
       ],
     });
@@ -315,7 +297,6 @@ interface MediaContent {
   embedCode?: string;
 }
 
-// Update the detectMediaContent function to use validateUrl
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   try {
     const response = await fetch(url);
@@ -323,22 +304,16 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const mediaContent: MediaContent[] = [];
 
     // Detect YouTube videos
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of youtubeMatches) {
       const videoId = match[1];
-      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      // Validate the video URL before adding it
-      const isValid = await validateUrl(videoUrl);
-      if (isValid) {
-        mediaContent.push({
-          type: "video",
-          url: videoUrl,
-          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-        });
-      } else {
-        console.warn(`Broken video URL detected and skipped: ${videoUrl}`);
-      }
+      mediaContent.push({
+        type: "video",
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+      });
     }
 
     // Detect images (excluding tiny icons, spacers, etc.)
@@ -347,17 +322,16 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     for (const match of imgMatches) {
       const imgUrl = match[1];
       if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // Exclude common unwanted images and validate URL
-        if (!imgUrl.includes("icon") && !imgUrl.includes("logo") && !imgUrl.includes("spacer")) {
-          const isValid = await validateUrl(imgUrl);
-          if (isValid) {
-            mediaContent.push({
-              type: "image",
-              url: imgUrl,
-            });
-          } else {
-            console.warn(`Broken image URL detected and skipped: ${imgUrl}`);
-          }
+        // Basic size detection from HTML attributes or URL pattern
+        if (
+          !imgUrl.includes("icon") &&
+          !imgUrl.includes("logo") &&
+          !imgUrl.includes("spacer")
+        ) {
+          mediaContent.push({
+            type: "image",
+            url: imgUrl,
+          });
         }
       }
     }

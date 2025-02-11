@@ -34,16 +34,18 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     // Close any existing socket connection
     if (socket) {
       socket.close();
+      setSocket(null);
+      setProgress(null);
     }
 
     try {
       // Get the current host and construct WebSocket URL
       const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${host}/ws`; // Always use /ws path
+      const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Get auth token from Clerk session
+      // Get auth token
       const token = await window.Clerk?.session?.getToken();
 
       if (!token) {
@@ -56,6 +58,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
+        setProgress(null);
 
         // Send authentication and research data
         ws.send(JSON.stringify({ 
@@ -68,6 +71,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       ws.onmessage = (event) => {
         try {
           const progress: ResearchProgress = JSON.parse(event.data);
+          console.log('Received progress update:', progress);
           setProgress(progress);
 
           if (progress.status === 'ERROR') {
@@ -92,12 +96,18 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           }
 
           if (progress.status === 'COMPLETED') {
+            console.log('Research completed successfully');
             toast({
               title: 'Research Complete',
               description: 'Your research has been completed successfully',
             });
             setIsResearching(false);
-            ws.close();
+            // Keep the socket open briefly to ensure the final message is processed
+            setTimeout(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.close();
+              }
+            }, 1000);
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -120,6 +130,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onclose = () => {
+        console.log('WebSocket connection closed');
         if (isResearching) {
           toast({
             title: 'Connection Lost',
