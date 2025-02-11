@@ -17,11 +17,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Update MODEL_CONFIG to use available OpenAI models
+// Update MODEL_CONFIG to use specific model for media-rich content
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4",
-  DEEP: "gpt-4-turbo-preview",
-  MEDIA: "gpt-4-turbo-preview", // Using gpt-4-turbo for media processing
+  BALANCED: "gpt-4o-2024-11-20",
+  DEEP: "o3-mini-2025-01-31",
+  MEDIA: "o3-mini-2025-01-31", // Using o3-mini for media processing due to its deep reasoning capabilities
 } as const;
 
 // Utility: trimPrompt
