@@ -1,21 +1,21 @@
-
 import { createContext, ReactNode, useContext } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { User } from "@shared/schema";
 import { getQueryFn } from "../lib/queryClient";
+import { useClerk } from "@clerk/clerk-react";
 
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
   error: Error | null;
-  logoutMutation: any;
+  getToken: () => Promise<string | null>;
 };
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const queryClient = useQueryClient();
-  
+  const { getToken: clerkGetToken } = useClerk();
+
   const {
     data: user,
     error,
@@ -25,12 +25,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      await fetch("/sign-out", { method: "POST" });
-      queryClient.setQueryData(["/api/auth/user"], null);
+  const getToken = async () => {
+    try {
+      return await clerkGetToken();
+    } catch (error) {
+      console.error("Error getting token:", error);
+      return null;
     }
-  });
+  };
 
   return (
     <AuthContext.Provider
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: user ?? null,
         isLoading,
         error,
-        logoutMutation
+        getToken
       }}
     >
       {children}

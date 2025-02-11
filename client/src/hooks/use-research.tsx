@@ -17,7 +17,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
   const [isResearching, setIsResearching] = useState(false);
   const { toast } = useToast();
-  const { user, signOut } = useAuth();
+  const { user, getToken } = useAuth();
   const [, setLocation] = useLocation();
 
   const startResearch = useCallback(async (research: Research) => {
@@ -37,8 +37,8 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Get auth token from Clerk session
-      const token = await user.getToken();
+      // Get auth token using the getToken function from useAuth
+      const token = await getToken();
 
       if (!token) {
         throw new Error('Failed to get authentication token');
@@ -79,7 +79,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
                 description: 'Your session has expired. Please sign in again.',
                 variant: 'destructive',
               });
-              signOut().then(() => setLocation('/auth'));
+              setLocation('/auth');
             } else {
               toast({
                 title: 'Research Error',
@@ -142,7 +142,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           description: 'Your session has expired. Please sign in again.',
           variant: 'destructive',
         });
-        signOut().then(() => setLocation('/auth'));
+        setLocation('/auth');
       } else {
         toast({
           title: 'Connection Error',
@@ -152,7 +152,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       }
       setIsResearching(false);
     }
-  }, [toast, socket, isResearching, user, signOut, setLocation]);
+  }, [toast, socket, isResearching, user, getToken, setLocation]);
 
   return (
     <ResearchContext.Provider value={{ startResearch, progress, isResearching }}>
