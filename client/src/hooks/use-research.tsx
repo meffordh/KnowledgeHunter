@@ -31,51 +31,60 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Close any existing socket connection
+    // Close any existing socket connection and clean up state
     if (socket) {
+      console.log('Closing existing WebSocket connection');
       socket.close();
       setSocket(null);
-      setProgress(null);
     }
 
+    // Reset state at the start of new research
+    setProgress(null);
+    setIsResearching(false);
+
     try {
-      // Get the current host and construct WebSocket URL
       const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${host}/ws`;
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Get auth token
       const token = await window.Clerk?.session?.getToken();
-
       if (!token) {
         throw new Error('Failed to get authentication token');
       }
 
-      // Create new WebSocket connection
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
-        setProgress(null);
 
-        // Send authentication and research data
-        ws.send(JSON.stringify({ 
+        // Send research request
+        const message = {
           authorization: `Bearer ${token}`,
           ...research,
           userId: user.id
-        }));
+        };
+        console.log('Sending research request:', message);
+        ws.send(JSON.stringify(message));
       };
 
       ws.onmessage = (event) => {
         try {
           const progress: ResearchProgress = JSON.parse(event.data);
-          console.log('Received progress update:', progress);
+          console.log('Received progress update:', {
+            status: progress.status,
+            progress: progress.progress,
+            totalProgress: progress.totalProgress,
+            hasReport: Boolean(progress.report),
+            reportLength: progress.report?.length || 0
+          });
+
+          // Store the progress update
           setProgress(progress);
 
           if (progress.status === 'ERROR') {
-            // Check for authentication errors
+            console.error('Research error:', progress.error);
             if (progress.error?.toLowerCase().includes('authentication') || 
                 progress.error?.toLowerCase().includes('jwt')) {
               toast({
@@ -92,25 +101,35 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
               });
             }
             setIsResearching(false);
-            ws.close();
           }
 
           if (progress.status === 'COMPLETED') {
-            console.log('Research completed successfully');
-            toast({
-              title: 'Research Complete',
-              description: 'Your research has been completed successfully',
+            console.log('Research completed successfully', {
+              hasReport: Boolean(progress.report),
+              reportLength: progress.report?.length || 0
             });
-            setIsResearching(false);
-            // Keep the socket open briefly to ensure the final message is processed
-            setTimeout(() => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-              }
-            }, 1000);
+
+            // Ensure we have a report before showing completion
+            if (progress.report) {
+              toast({
+                title: 'Research Complete',
+                description: 'Your research has been completed successfully',
+              });
+              // Keep researching state true until we're sure report is rendered
+              setTimeout(() => {
+                setIsResearching(false);
+              }, 500);
+            } else {
+              console.warn('Completed status received but no report found');
+              toast({
+                title: 'Warning',
+                description: 'Research completed but no report was generated',
+                variant: 'destructive',
+              });
+            }
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('Error processing WebSocket message:', error);
           toast({
             title: 'Error',
             description: 'Failed to process research update',
@@ -130,8 +149,13 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onclose = () => {
-        console.log('WebSocket connection closed');
-        if (isResearching) {
+        console.log('WebSocket connection closed', {
+          isResearching,
+          hasProgress: Boolean(progress),
+          progressStatus: progress?.status
+        });
+
+        if (isResearching && (!progress || progress.status !== 'COMPLETED')) {
           toast({
             title: 'Connection Lost',
             description: 'Lost connection to research service',
@@ -144,8 +168,6 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       setSocket(ws);
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
-
-      // Handle authentication errors
       if (error instanceof Error && 
           (error.message.includes('authentication') || error.message.includes('jwt'))) {
         toast({
