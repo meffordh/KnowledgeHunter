@@ -1,14 +1,14 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { researchSchema, type Research } from '@shared/schema';
-import { useResearch } from '@/hooks/use-research';
-import { Button } from '@/components/ui/button';
-import { ShareButton } from '@/components/ui/share-button';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import ReactMarkdown from 'react-markdown';
-import { SiGithub } from 'react-icons/si';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { researchSchema, type Research } from "@shared/schema";
+import { useResearch } from "@/hooks/use-research";
+import { Button } from "@/components/ui/button";
+import { ShareButton } from "@/components/ui/share-button";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import ReactMarkdown from "react-markdown";
+import { SiGithub } from "react-icons/si";
 import {
   Form,
   FormControl,
@@ -16,23 +16,25 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Loader2, Search, Copy, Download, ExternalLink } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Loader2, Search, Copy, Download, ExternalLink } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
   const { toast } = useToast();
-  const [clarifyingQuestions, setClarifyingQuestions] = useState<Record<string, string>>({});
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<
+    Record<string, string>
+  >({});
   const [showQuestions, setShowQuestions] = useState(false);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
 
   const form = useForm<Research>({
     resolver: zodResolver(researchSchema),
     defaultValues: {
-      query: '',
+      query: "",
     },
   });
 
@@ -40,40 +42,49 @@ export default function HomePage() {
     if (!showQuestions) {
       try {
         setIsGeneratingQuestions(true);
-        console.log('Requesting clarifying questions for query:', data.query);
-        const response = await fetch('/api/clarify', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+        console.log("Requesting clarifying questions for query:", data.query);
+        const response = await fetch("/api/clarify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
           },
           body: JSON.stringify({ query: data.query }),
         });
 
         if (!response.ok) {
-          throw new Error('Failed to get clarifying questions');
+          throw new Error("Failed to get clarifying questions");
         }
 
         const responseData = await response.json();
-        console.log('Received questions:', responseData.questions);
+        console.log("Received questions:", responseData.questions);
 
-        if (!Array.isArray(responseData.questions) || responseData.questions.length === 0) {
-          throw new Error('Invalid questions format received from server');
+        if (
+          !Array.isArray(responseData.questions) ||
+          responseData.questions.length === 0
+        ) {
+          throw new Error("Invalid questions format received from server");
         }
 
-        const questionsObj = responseData.questions.reduce((acc: Record<string, string>, question: string) => {
-          acc[question] = '';
-          return acc;
-        }, {});
+        const questionsObj = responseData.questions.reduce(
+          (acc: Record<string, string>, question: string) => {
+            acc[question] = "";
+            return acc;
+          },
+          {},
+        );
 
         setClarifyingQuestions(questionsObj);
         setShowQuestions(true);
       } catch (error) {
-        console.error('Error getting clarifying questions:', error);
+        console.error("Error getting clarifying questions:", error);
         toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to generate clarifying questions. Please try again.',
-          variant: 'destructive',
+          title: "Error",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Failed to generate clarifying questions. Please try again.",
+          variant: "destructive",
         });
       } finally {
         setIsGeneratingQuestions(false);
@@ -93,14 +104,14 @@ export default function HomePage() {
       try {
         await navigator.clipboard.writeText(progress.report);
         toast({
-          title: 'Success',
-          description: 'Report copied to clipboard',
+          title: "Success",
+          description: "Report copied to clipboard",
         });
       } catch (error) {
         toast({
-          title: 'Error',
-          description: 'Failed to copy report',
-          variant: 'destructive',
+          title: "Error",
+          description: "Failed to copy report",
+          variant: "destructive",
         });
       }
     }
@@ -108,11 +119,11 @@ export default function HomePage() {
 
   const handleDownloadReport = () => {
     if (progress?.report) {
-      const blob = new Blob([progress.report], { type: 'text/markdown' });
+      const blob = new Blob([progress.report], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = 'research-report.md';
+      a.download = "research-report.md";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -132,12 +143,18 @@ export default function HomePage() {
               className="space-y-2"
             >
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-                Turn complex topics into
+                Get Answers to Any Question
                 <br />
-                <span className="text-orange-600">actionable insights</span>
+                <span className="text-orange-600">
+                  with Autonomous AI Agents
+                </span>
               </h1>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Harness AI-powered research to analyze, synthesize, and deliver comprehensive knowledge from multiple sources. Get detailed reports in minutes, not hours.
+                Multi-Agent AI Powered Knowledge Hunting and Orchestration.
+                Conduct research to analyze, synthesize, and deliver
+                comprehensive knowledge from multiple sources. Get
+                well-researched answers, visuals and content for any question in
+                minutes, on auto-pilot.
               </p>
             </motion.div>
           </div>
@@ -145,17 +162,22 @@ export default function HomePage() {
           <Card className="border-2 transition-all duration-200 hover:border-orange-200">
             <CardContent className="pt-6">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-6"
+                >
                   <FormField
                     control={form.control}
                     name="query"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xl font-medium">What Would You Like to Research?</FormLabel>
+                        <FormLabel className="text-xl font-medium">
+                          What Would You Like to Research?
+                        </FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="Enter your research topic..." 
-                            {...field} 
+                          <Input
+                            placeholder="Enter your research topic..."
+                            {...field}
                             className="h-14 text-lg mt-2 transition-all duration-200 focus:scale-[1.01]"
                           />
                         </FormControl>
@@ -177,46 +199,54 @@ export default function HomePage() {
                       </motion.div>
                     )}
 
-                    {showQuestions && Object.keys(clarifyingQuestions).length > 0 && (
-                      <motion.div 
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="space-y-4"
-                      >
-                        <h3 className="text-lg font-semibold mb-4">Please answer these clarifying questions:</h3>
-                        <div className="space-y-6">
-                          {Object.entries(clarifyingQuestions).map(([question, answer], index) => (
-                            <motion.div
-                              key={question}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: index * 0.1 }}
-                            >
-                              <FormItem>
-                                <FormLabel className="text-base font-medium text-foreground">
-                                  {question}
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    value={answer}
-                                    onChange={(e) => setClarifyingQuestions(prev => ({
-                                      ...prev,
-                                      [question]: e.target.value
-                                    }))}
-                                    placeholder="Type your answer here..."
-                                    className="mt-2"
-                                  />
-                                </FormControl>
-                              </FormItem>
-                            </motion.div>
-                          ))}
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-4">
-                          Providing detailed answers will help us generate more accurate research results.
-                        </div>
-                      </motion.div>
-                    )}
+                    {showQuestions &&
+                      Object.keys(clarifyingQuestions).length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="space-y-4"
+                        >
+                          <h3 className="text-lg font-semibold mb-4">
+                            Please answer these clarifying questions:
+                          </h3>
+                          <div className="space-y-6">
+                            {Object.entries(clarifyingQuestions).map(
+                              ([question, answer], index) => (
+                                <motion.div
+                                  key={question}
+                                  initial={{ opacity: 0, x: -20 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: index * 0.1 }}
+                                >
+                                  <FormItem>
+                                    <FormLabel className="text-base font-medium text-foreground">
+                                      {question}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        value={answer}
+                                        onChange={(e) =>
+                                          setClarifyingQuestions((prev) => ({
+                                            ...prev,
+                                            [question]: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Type your answer here..."
+                                        className="mt-2"
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                </motion.div>
+                              ),
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-4">
+                            Providing detailed answers will help us generate
+                            more accurate research results.
+                          </div>
+                        </motion.div>
+                      )}
                   </AnimatePresence>
 
                   <Button
@@ -254,15 +284,24 @@ export default function HomePage() {
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span>Progress</span>
-                      <span>{Math.round((progress.progress / progress.totalProgress) * 100)}%</span>
+                      <span>
+                        {Math.round(
+                          (progress.progress / progress.totalProgress) * 100,
+                        )}
+                        %
+                      </span>
                     </div>
-                    <Progress value={(progress.progress / progress.totalProgress) * 100} />
+                    <Progress
+                      value={(progress.progress / progress.totalProgress) * 100}
+                    />
                   </div>
 
                   {progress.currentQuery && (
                     <div>
                       <h3 className="font-medium">Current Query:</h3>
-                      <p className="text-sm text-muted-foreground">{progress.currentQuery}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {progress.currentQuery}
+                      </p>
                     </div>
                   )}
 
@@ -289,8 +328,8 @@ export default function HomePage() {
                       <Card className="mt-4">
                         <CardContent className="prose dark:prose-invert max-w-none py-4">
                           <div className="flex justify-end mb-4">
-                            <ShareButton 
-                              content={`Check out my research on: ${form.getValues().query}`} 
+                            <ShareButton
+                              content={`Check out my research on: ${form.getValues().query}`}
                               url={window.location.href}
                               // Remove reportId prop since it's not in the progress type
                             />
@@ -299,26 +338,30 @@ export default function HomePage() {
                         </CardContent>
                       </Card>
 
-                      {progress.visitedUrls && progress.visitedUrls.length > 0 && (
-                        <div className="mt-4">
-                          <h3 className="font-medium mb-2">Sources:</h3>
-                          <ul className="space-y-1">
-                            {progress.visitedUrls.map((url, index) => (
-                              <li key={index} className="flex items-center text-sm">
-                                <ExternalLink className="h-4 w-4 mr-2 flex-shrink-0" />
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline truncate"
+                      {progress.visitedUrls &&
+                        progress.visitedUrls.length > 0 && (
+                          <div className="mt-4">
+                            <h3 className="font-medium mb-2">Sources:</h3>
+                            <ul className="space-y-1">
+                              {progress.visitedUrls.map((url, index) => (
+                                <li
+                                  key={index}
+                                  className="flex items-center text-sm"
                                 >
-                                  {url}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                                  <ExternalLink className="h-4 w-4 mr-2 flex-shrink-0" />
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline truncate"
+                                  >
+                                    {url}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                     </div>
                   )}
 
