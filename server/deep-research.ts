@@ -297,78 +297,13 @@ interface MediaContent {
   embedCode?: string;
 }
 
-// Define new function for image analysis with JSON Schema
-const analyze_image = {
-  name: "analyze_image",
-  description: "Analyzes an image from a URL or Base64 data and returns key features and a summary.",
-  parameters: {
-    type: "object",
-    properties: {
-      image_url: {
-        type: "string",
-        description: "Direct URL or Base64 string of the image"
-      },
-    },
-    required: ["image_url"],
-    additionalProperties: false,
-  },
-};
-
-// Function to analyze images using GPT-4o-mini's vision capabilities
-async function analyzeImageLocally(imageUrl: string): Promise<string> {
-  try {
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert at analyzing images and extracting key features and content. Provide detailed descriptions focusing on relevant aspects for research purposes."
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Please analyze this image and describe its key features, focusing on aspects relevant to research:" },
-            { type: "image_url", image_url: { url: imageUrl } }
-          ]
-        }
-      ],
-      max_tokens: 500
-    });
-
-    return response.choices[0]?.message?.content || "Unable to analyze image.";
-  } catch (error) {
-    console.error("Error analyzing image:", error);
-    return "Error analyzing image.";
-  }
-}
-
-// Update detectMediaContent to use the new image analysis functionality
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   try {
     const response = await fetch(url);
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // First check for image inputs
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = html.matchAll(imgRegex);
-    for (const match of imgMatches) {
-      const imgUrl = match[1];
-      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // Basic size detection from HTML attributes or URL pattern
-        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
-          // Analyze image using GPT-4o-mini
-          const analysis = await analyzeImageLocally(imgUrl);
-          mediaContent.push({
-            type: 'image',
-            url: imgUrl,
-            description: analysis
-          });
-        }
-      }
-    }
-
-    // Detect YouTube videos (keeping existing functionality)
+    // Detect YouTube videos
     const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of youtubeMatches) {
@@ -378,6 +313,22 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         url: `https://www.youtube.com/watch?v=${videoId}`,
         embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
       });
+    }
+
+    // Detect images (excluding tiny icons, spacers, etc.)
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = html.matchAll(imgRegex);
+    for (const match of imgMatches) {
+      const imgUrl = match[1];
+      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Basic size detection from HTML attributes or URL pattern
+        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
+          mediaContent.push({
+            type: 'image',
+            url: imgUrl
+          });
+        }
+      }
     }
 
     return mediaContent;
@@ -587,15 +538,11 @@ async function handleResearch(
   const sendProgress = (progress: ResearchProgress) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(progress));
-      console.log("Sent progress update:", progress.status, progress.progress, "/", progress.totalProgress);
     }
   };
 
   try {
-    console.log("Starting parameter determination for query:", research.query);
     const { breadth, depth } = await determineResearchParameters(research.query);
-    console.log("Determined parameters:", { breadth, depth });
-
     const autoResearch = { ...research, breadth, depth };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
@@ -603,7 +550,6 @@ async function handleResearch(
     let completedQueries = 0;
     const totalQueries = autoResearch.breadth * autoResearch.depth;
 
-    console.log("Initializing research with total queries:", totalQueries);
     sendProgress({
       status: "IN_PROGRESS",
       currentQuery: autoResearch.query,
@@ -613,10 +559,8 @@ async function handleResearch(
       visitedUrls: [],
       media: []
     });
-
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
-      console.log(`Starting depth level ${d + 1}/${autoResearch.depth}`);
       const newQueries: string[] = [];
       for (
         let i = 0;
@@ -625,8 +569,6 @@ async function handleResearch(
       ) {
         const query = currentQueries[i];
         completedQueries++;
-        console.log(`Processing query ${completedQueries}/${totalQueries}:`, query);
-
         sendProgress({
           status: "IN_PROGRESS",
           currentQuery: query,
@@ -636,43 +578,33 @@ async function handleResearch(
           visitedUrls,
           media: allMedia
         });
-
-        try {
-          console.log("Starting research for query:", query);
-          const { findings, urls, media } = await researchQuery(query);
-          console.log("Research completed for query with findings:", findings.length);
-
-          allLearnings.push(...findings);
-          visitedUrls.push(...urls);
-          allMedia.push(...media);
-
-          if (d < autoResearch.depth - 1) {
-            console.log("Expanding query for next depth level");
-            const followUpQueries = await expandQuery(query);
-            console.log("Generated follow-up queries:", followUpQueries);
-            newQueries.push(...followUpQueries);
-          }
-        } catch (error) {
-          console.error("Error processing query:", query, error);
-          allLearnings.push(`Error researching "${query}": ${error.message}`);
+        const { findings, urls, media } = await researchQuery(query);
+        allLearnings.push(...findings);
+        visitedUrls.push(...urls);
+        allMedia.push(...media);
+        if (d < autoResearch.depth - 1) {
+          const followUpQueries = await expandQuery(query);
+          newQueries.push(...followUpQueries);
         }
       }
       currentQueries = newQueries;
     }
-
-    console.log("Research completed, generating final report");
+    console.log("Generating final report with:", {
+      queryCount: allLearnings.length,
+      learnings: allLearnings,
+      urlCount: visitedUrls.length,
+      mediaCount: allMedia.length
+    });
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
       visitedUrls,
       allMedia
     );
-
     if (onComplete) {
-      console.log("Calling onComplete callback");
+      console.log("Calling onComplete callback with report and URLs");
       await onComplete(formattedReport, visitedUrls);
     }
-
     sendProgress({
       status: "COMPLETED",
       learnings: allLearnings,
@@ -680,10 +612,10 @@ async function handleResearch(
       totalProgress: totalQueries,
       report: formattedReport,
       visitedUrls,
-      media: allMedia,
+      media: allMedia, // Include media in the final progress update
     });
   } catch (error) {
-    console.error("Critical error in handleResearch:", error);
+    console.error("Error in handleResearch:", error);
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
     sendProgress({
@@ -693,7 +625,7 @@ async function handleResearch(
       totalProgress: 1,
       error: errorMessage,
       visitedUrls: [],
-      media: [],
+      media: [], // Include empty media array in error state
     });
   }
 }
