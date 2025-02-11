@@ -2,6 +2,7 @@ import { pgTable, text, serial, integer, boolean, timestamp, foreignKey, jsonb }
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Previous table definitions remain unchanged
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   email: text("email").notNull(),
@@ -50,6 +51,7 @@ export const reportCustomizations = pgTable("report_customizations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Previous schema type exports remain unchanged
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   researchCount: true,
@@ -85,6 +87,15 @@ export const metadataSchema = z.object({
   customNotes: z.string().optional(),
 });
 
+// New: Add MediaContent schema
+export const mediaContentSchema = z.object({
+  type: z.enum(['video', 'image']),
+  url: z.string().url(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  embedCode: z.string().optional(),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
@@ -93,6 +104,7 @@ export type Research = z.infer<typeof researchSchema>;
 export type ResearchProgress = z.infer<typeof researchProgressSchema>;
 export type InsertLinkedinShare = z.infer<typeof insertLinkedinShareSchema>;
 export type LinkedinShare = typeof linkedinShares.$inferSelect;
+export type MediaContent = z.infer<typeof mediaContentSchema>;
 
 export type ReportTemplate = typeof reportTemplates.$inferSelect;
 export type InsertReportTemplate = z.infer<typeof insertReportTemplateSchema>;
@@ -107,6 +119,7 @@ export const researchSchema = z.object({
   clarifications: z.record(z.string(), z.string()).optional(),
 });
 
+// Update researchProgressSchema to include media content
 export const researchProgressSchema = z.object({
   status: z.enum(['WAITING', 'IN_PROGRESS', 'COMPLETED', 'ERROR']),
   currentQuery: z.string().optional(),
@@ -115,5 +128,6 @@ export const researchProgressSchema = z.object({
   totalProgress: z.number(),
   error: z.string().optional(),
   report: z.string().optional(),
-  visitedUrls: z.array(z.string())
+  visitedUrls: z.array(z.string()),
+  media: z.array(mediaContentSchema), // Add media array to track media content
 });

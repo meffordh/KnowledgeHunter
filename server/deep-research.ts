@@ -17,10 +17,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Only two model modes are used: BALANCED and DEEP.
+// Update MODEL_CONFIG to include specific model for media-rich content
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-11-20", // assumed 8K context window
-  DEEP: "o3-mini-2025-01-31", // 128K tokens for extensive analysis
+  BALANCED: "gpt-4o-2024-11-20",
+  DEEP: "o3-mini-2025-01-31",
+  MEDIA: "o3-mini-high-2025-02-01", // New model specifically for media processing
 } as const;
 
 // Utility: trimPrompt
@@ -35,6 +36,7 @@ function trimPrompt(text: string, model: string): string {
         maxTokens = 128000;
         break;
       case MODEL_CONFIG.BALANCED:
+      case MODEL_CONFIG.MEDIA:
       default:
         maxTokens = 16000;
         break;
@@ -286,53 +288,212 @@ async function determineModelType(
   }
 }
 
-// Generate a verbose, dynamic research report.
-// This function uses the selected model (BALANCED or DEEP) and instructs the model to produce a detailed report.
+// Add media detection functionality
+interface MediaContent {
+  type: 'video' | 'image';
+  url: string;
+  title?: string;
+  description?: string;
+  embedCode?: string;
+}
+
+async function detectMediaContent(url: string): Promise<MediaContent[]> {
+  try {
+    const response = await fetch(url);
+    const html = await response.text();
+    const mediaContent: MediaContent[] = [];
+
+    // Detect YouTube videos
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeMatches = html.matchAll(youtubeRegex);
+    for (const match of youtubeMatches) {
+      const videoId = match[1];
+      mediaContent.push({
+        type: 'video',
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+      });
+    }
+
+    // Detect images (excluding tiny icons, spacers, etc.)
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = html.matchAll(imgRegex);
+    for (const match of imgMatches) {
+      const imgUrl = match[1];
+      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Basic size detection from HTML attributes or URL pattern
+        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
+          mediaContent.push({
+            type: 'image',
+            url: imgUrl
+          });
+        }
+      }
+    }
+
+    return mediaContent;
+  } catch (error) {
+    console.error("Error detecting media content:", error);
+    return [];
+  }
+}
+
+
+// Update researchQuery to include media content
+async function researchQuery(
+  query: string,
+): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
+  try {
+    console.log("Starting search for query:", query);
+    const searchResults = await firecrawl.search(query, {
+      limit: 5,
+      wait: true,
+      timeout: 30000,
+    });
+
+    if (!searchResults?.success || !Array.isArray(searchResults.data)) {
+      return { findings: ["No relevant information found."], urls: [], media: [] };
+    }
+
+    const urls = searchResults.data.map((result) => result.url);
+    const mediaPromises = urls.map(url => detectMediaContent(url));
+    const mediaResults = await Promise.all(mediaPromises);
+    const allMedia = mediaResults.flat();
+
+    // Include media information in the context for AI analysis
+    const context = searchResults.data
+      .map((result, index) => {
+        const mediaForUrl = mediaResults[index];
+        return `${result.title}\n${result.description}\n${
+          mediaForUrl.length > 0 
+            ? `Related media: ${mediaForUrl.map(m => 
+                `${m.type.toUpperCase()}: ${m.url}`).join('\n')}`
+            : ''
+        }`;
+      })
+      .filter((text) => text.length > 0)
+      .join("\n\n");
+
+    if (!context) {
+      return { findings: ["No relevant information found."], urls: [], media: [] };
+    }
+
+    const trimmedContext = trimPrompt(context, MODEL_CONFIG.MEDIA);
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "Analyze the research data including any media content. For videos and images, evaluate their relevance and potential value to the research. Include specific references to media content in your findings when appropriate."
+        },
+        {
+          role: "user",
+          content: `Analyze this research data and provide key findings about '${query}', including relevant media content:\n\n${trimmedContext}\n\nFindings:`,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { findings: ["Error analyzing research data."], urls, media: allMedia };
+    }
+
+    const findings = content
+      .split("\n")
+      .map((line) => line.replace(/^[-•*]|\d+\.\s*/, "").trim())
+      .filter((f) => f.length > 0);
+
+    return {
+      findings: findings.length > 0 ? findings : ["Analysis completed but no clear findings extracted."],
+      urls,
+      media: allMedia,
+    };
+  } catch (error) {
+    console.error("Error researching query:", error);
+    return {
+      findings: [
+        `Error while researching: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      ],
+      urls: [],
+      media: [],
+    };
+  }
+}
+
+// Update formatReport to include media content
 async function formatReport(
   query: string,
   learnings: string[],
   visitedUrls: string[],
+  media: MediaContent[],
 ): Promise<string> {
   try {
-    // Check if the query suggests a ranking-style report.
-    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(
-      query,
-    );
-    // Determine model type based on query and learnings.
-    const modelType = await determineModelType(query, learnings);
+    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(query);
+    const modelType = "MEDIA"; // Always use MEDIA model for final report
     const model = MODEL_CONFIG[modelType];
-    // Trim inputs using the selected model.
+
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
-    // Get dynamic report structure.
+
+    // Format media content for the AI
+    const mediaContext = media.map(m => 
+      `${m.type.toUpperCase()}: ${m.url}${m.title ? ` - ${m.title}` : ''}${m.description ? `\nDescription: ${m.description}` : ''}`
+    ).join('\n\n');
+
     const reportStructure = await determineReportStructure(query, learnings);
+
     const response = await openai.chat.completions.create({
       model,
       messages: [
         {
           role: "system",
-          content: isRankingQuery
-            ? `You are creating a detailed research report that requires clear, numbered rankings. Ensure each item is explained comprehensively. Use markdown formatting and generate a verbose report (at least 3000 tokens if context permits). Adapt section headings dynamically based on the provided structure.`
-            : `You are creating a comprehensive and dynamic research report. Avoid rigid templates. Instead, use dynamic sections tailored to the content, provide extensive details (aim for at least 3000 tokens if context permits), and use markdown formatting for clarity.`,
+          content: `You are creating a comprehensive research report that incorporates both textual findings and rich media content. Use markdown formatting and generate a verbose report (at least 3000 tokens if context permits). When referencing media content:
+          - For videos: Include them as embedded content using provided embed codes or as markdown links
+          - For images: Include them using markdown image syntax
+          Structure the report to flow naturally between text and media elements.`
         },
         {
           role: "user",
-          content: `Create a very detailed research report about "${trimmedQuery}" using these findings:\n\n${trimmedLearnings.join(
-            "\n",
-          )}\n\nFollow this structure:\n${reportStructure}\n\nInclude a comprehensive Sources section with these URLs:\n${trimmedVisitedUrls.join(
-            "\n",
-          )}\n\n${
-            isRankingQuery
-              ? "Ensure rankings are clearly numbered with detailed explanations for each item."
-              : "Provide extensive analysis and insights throughout each section."
-          }`,
+          content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
+
+Findings:
+${trimmedLearnings.join("\n")}
+
+Available Media Content:
+${mediaContext}
+
+Follow this structure:
+${reportStructure}
+
+Include a comprehensive Sources section with these URLs:
+${trimmedVisitedUrls.join("\n")}
+
+${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
+
+Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
         },
       ],
-      // Increase max_tokens to allow for longer output. Here we allow 6000 tokens for DEEP mode and 4000 for BALANCED.
-      max_completion_tokens: model === MODEL_CONFIG.DEEP ? 8000 : 4000,
+      max_completion_tokens: model === MODEL_CONFIG.MEDIA ? 8000 : 4000,
     });
-    return response.choices[0]?.message?.content || "Error generating report";
+
+    let report = response.choices[0]?.message?.content || "Error generating report";
+
+    // Post-process the report to ensure proper media embedding
+    media.forEach(m => {
+      if (m.type === 'video' && m.embedCode) {
+        // Replace any standard YouTube links with embed codes
+        const videoUrl = m.url.replace(/watch\?v=/, 'embed/');
+        report = report.replace(
+          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, 'g'),
+          m.embedCode
+        );
+      }
+    });
+
+    return report;
   } catch (error) {
     console.error("Error formatting report:", error);
     return "Error generating research report";
@@ -368,69 +529,7 @@ async function expandQuery(query: string): Promise<string[]> {
   }
 }
 
-// Perform a web search using Firecrawl to gather findings and URLs for a query.
-async function researchQuery(
-  query: string,
-): Promise<{ findings: string[]; urls: string[] }> {
-  try {
-    console.log("Starting search for query:", query);
-    const searchResults = await firecrawl.search(query, {
-      limit: 5,
-      wait: true,
-      timeout: 30000,
-    });
-    console.log("Search results:", JSON.stringify(searchResults, null, 2));
-    if (!searchResults?.success || !Array.isArray(searchResults.data)) {
-      console.error("Invalid search results structure:", searchResults);
-      return { findings: ["No relevant information found."], urls: [] };
-    }
-    const urls = searchResults.data.map((result) => result.url);
-    const context = searchResults.data
-      .map((result) => `${result.title}\n${result.description}`)
-      .filter((text) => text.length > 0)
-      .join("\n\n");
-    if (!context) {
-      return { findings: ["No relevant information found."], urls: [] };
-    }
-    const trimmedContext = trimPrompt(context, MODEL_CONFIG.BALANCED);
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
-      messages: [
-        {
-          role: "user",
-          content: `Analyze this research data and provide key findings about '${query}':\n\n${trimmedContext}\n\nFindings:`,
-        },
-      ],
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      return { findings: ["Error analyzing research data."], urls };
-    }
-    const findings = content
-      .split("\n")
-      .map((line) => line.replace(/^[-•*]|\d+\.\s*/, "").trim())
-      .filter((f) => f.length > 0);
-    return {
-      findings:
-        findings.length > 0
-          ? findings
-          : ["Analysis completed but no clear findings extracted."],
-      urls,
-    };
-  } catch (error) {
-    console.error("Error researching query:", error);
-    return {
-      findings: [
-        `Error while researching: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      ],
-      urls: [],
-    };
-  }
-}
-
-// Main research handler: aggregates findings and generates the final report.
+// Update handleResearch to manage media content
 async function handleResearch(
   research: Research,
   ws: WebSocket,
@@ -441,16 +540,16 @@ async function handleResearch(
       ws.send(JSON.stringify(progress));
     }
   };
+
   try {
-    // Determine research parameters using the BALANCED model.
-    const { breadth, depth } = await determineResearchParameters(
-      research.query,
-    );
+    const { breadth, depth } = await determineResearchParameters(research.query);
     const autoResearch = { ...research, breadth, depth };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
+    const allMedia: MediaContent[] = [];
     let completedQueries = 0;
     const totalQueries = autoResearch.breadth * autoResearch.depth;
+
     sendProgress({
       status: "IN_PROGRESS",
       currentQuery: autoResearch.query,
@@ -458,6 +557,7 @@ async function handleResearch(
       progress: 0,
       totalProgress: totalQueries,
       visitedUrls: [],
+      media: []
     });
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
@@ -476,10 +576,12 @@ async function handleResearch(
           progress: completedQueries,
           totalProgress: totalQueries,
           visitedUrls,
+          media: allMedia
         });
-        const { findings, urls } = await researchQuery(query);
+        const { findings, urls, media } = await researchQuery(query);
         allLearnings.push(...findings);
         visitedUrls.push(...urls);
+        allMedia.push(...media);
         if (d < autoResearch.depth - 1) {
           const followUpQueries = await expandQuery(query);
           newQueries.push(...followUpQueries);
@@ -491,11 +593,13 @@ async function handleResearch(
       queryCount: allLearnings.length,
       learnings: allLearnings,
       urlCount: visitedUrls.length,
+      mediaCount: allMedia.length
     });
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
       visitedUrls,
+      allMedia
     );
     if (onComplete) {
       console.log("Calling onComplete callback with report and URLs");
@@ -508,6 +612,7 @@ async function handleResearch(
       totalProgress: totalQueries,
       report: formattedReport,
       visitedUrls,
+      media: allMedia, // Include media in the final progress update
     });
   } catch (error) {
     console.error("Error in handleResearch:", error);
@@ -520,6 +625,7 @@ async function handleResearch(
       totalProgress: 1,
       error: errorMessage,
       visitedUrls: [],
+      media: [], // Include empty media array in error state
     });
   }
 }
