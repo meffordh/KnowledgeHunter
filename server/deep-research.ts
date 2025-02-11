@@ -587,11 +587,15 @@ async function handleResearch(
   const sendProgress = (progress: ResearchProgress) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(progress));
+      console.log("Sent progress update:", progress.status, progress.progress, "/", progress.totalProgress);
     }
   };
 
   try {
+    console.log("Starting parameter determination for query:", research.query);
     const { breadth, depth } = await determineResearchParameters(research.query);
+    console.log("Determined parameters:", { breadth, depth });
+
     const autoResearch = { ...research, breadth, depth };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
@@ -599,6 +603,7 @@ async function handleResearch(
     let completedQueries = 0;
     const totalQueries = autoResearch.breadth * autoResearch.depth;
 
+    console.log("Initializing research with total queries:", totalQueries);
     sendProgress({
       status: "IN_PROGRESS",
       currentQuery: autoResearch.query,
@@ -608,8 +613,10 @@ async function handleResearch(
       visitedUrls: [],
       media: []
     });
+
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
+      console.log(`Starting depth level ${d + 1}/${autoResearch.depth}`);
       const newQueries: string[] = [];
       for (
         let i = 0;
@@ -618,6 +625,8 @@ async function handleResearch(
       ) {
         const query = currentQueries[i];
         completedQueries++;
+        console.log(`Processing query ${completedQueries}/${totalQueries}:`, query);
+
         sendProgress({
           status: "IN_PROGRESS",
           currentQuery: query,
@@ -627,33 +636,43 @@ async function handleResearch(
           visitedUrls,
           media: allMedia
         });
-        const { findings, urls, media } = await researchQuery(query);
-        allLearnings.push(...findings);
-        visitedUrls.push(...urls);
-        allMedia.push(...media);
-        if (d < autoResearch.depth - 1) {
-          const followUpQueries = await expandQuery(query);
-          newQueries.push(...followUpQueries);
+
+        try {
+          console.log("Starting research for query:", query);
+          const { findings, urls, media } = await researchQuery(query);
+          console.log("Research completed for query with findings:", findings.length);
+
+          allLearnings.push(...findings);
+          visitedUrls.push(...urls);
+          allMedia.push(...media);
+
+          if (d < autoResearch.depth - 1) {
+            console.log("Expanding query for next depth level");
+            const followUpQueries = await expandQuery(query);
+            console.log("Generated follow-up queries:", followUpQueries);
+            newQueries.push(...followUpQueries);
+          }
+        } catch (error) {
+          console.error("Error processing query:", query, error);
+          allLearnings.push(`Error researching "${query}": ${error.message}`);
         }
       }
       currentQueries = newQueries;
     }
-    console.log("Generating final report with:", {
-      queryCount: allLearnings.length,
-      learnings: allLearnings,
-      urlCount: visitedUrls.length,
-      mediaCount: allMedia.length
-    });
+
+    console.log("Research completed, generating final report");
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
       visitedUrls,
       allMedia
     );
+
     if (onComplete) {
-      console.log("Calling onComplete callback with report and URLs");
+      console.log("Calling onComplete callback");
       await onComplete(formattedReport, visitedUrls);
     }
+
     sendProgress({
       status: "COMPLETED",
       learnings: allLearnings,
@@ -661,10 +680,10 @@ async function handleResearch(
       totalProgress: totalQueries,
       report: formattedReport,
       visitedUrls,
-      media: allMedia, // Include media in the final progress update
+      media: allMedia,
     });
   } catch (error) {
-    console.error("Error in handleResearch:", error);
+    console.error("Critical error in handleResearch:", error);
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
     sendProgress({
@@ -674,7 +693,7 @@ async function handleResearch(
       totalProgress: 1,
       error: errorMessage,
       visitedUrls: [],
-      media: [], // Include empty media array in error state
+      media: [],
     });
   }
 }
