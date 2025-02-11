@@ -37,6 +37,8 @@ flowchart TD
     P --> Q
 ```
 
+</details>
+
 ## Key Features
 
 ### Advanced Research Capabilities
