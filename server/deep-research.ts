@@ -17,11 +17,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Update MODEL_CONFIG to include specific model for media-rich content
+// Update MODEL_CONFIG to use available OpenAI models
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-11-20",
-  DEEP: "o3-mini-2025-01-31",
-  MEDIA: "o3-mini-high-2025-02-01", // New model specifically for media processing
+  BALANCED: "gpt-4",
+  DEEP: "gpt-4-turbo-preview",
+  MEDIA: "gpt-4-turbo-preview", // Using gpt-4-turbo for media processing
 } as const;
 
 // Utility: trimPrompt
@@ -365,8 +365,8 @@ async function researchQuery(
       .map((result, index) => {
         const mediaForUrl = mediaResults[index];
         return `${result.title}\n${result.description}\n${
-          mediaForUrl.length > 0 
-            ? `Related media: ${mediaForUrl.map(m => 
+          mediaForUrl.length > 0
+            ? `Related media: ${mediaForUrl.map(m =>
                 `${m.type.toUpperCase()}: ${m.url}`).join('\n')}`
             : ''
         }`;
@@ -439,7 +439,7 @@ async function formatReport(
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
 
     // Format media content for the AI
-    const mediaContext = media.map(m => 
+    const mediaContext = media.map(m =>
       `${m.type.toUpperCase()}: ${m.url}${m.title ? ` - ${m.title}` : ''}${m.description ? `\nDescription: ${m.description}` : ''}`
     ).join('\n\n');
 
