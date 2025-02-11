@@ -1,0 +1,83 @@
+Below is a detailed instruction for a junior/mid-level AI developer to modify your deep research.ts code so that media URLs (images, videos, etc.) are verified before they are included in the final report. This will help prevent broken links (for example, the ones you mentioned) from ending up in your output.
+________________________________________
+Instruction to Modify deep research.ts for URL Validation
+1. Create a New Utility Function to Validate URLs
+Add a function (for example, validateUrl) that takes a URL as input and makes an HTTP request (ideally a HEAD request) to check if the URL resolves successfully. If the request returns an OK status (e.g., status code 200), then the URL is considered valid. Otherwise, it is marked as broken.
+Example Code:
+typescript
+Copy
+async function validateUrl(url: string): Promise<boolean> {
+  try {
+    // Use a HEAD request to check if the URL resolves
+    const response = await fetch(url, { method: 'HEAD' });
+    return response.ok; // returns true if status is 200-299
+  } catch (error) {
+    console.error(`Error validating URL: ${url}`, error);
+    return false;
+  }
+}
+2. Integrate URL Validation into the Media Detection Flow
+Inside your existing detectMediaContent function, modify the logic so that each media URL is checked using the new validateUrl function before being added to the results array. For example, when detecting images, perform the validation and only push the URL if it resolves successfully.
+Modified snippet for image detection:
+typescript
+Copy
+// Detect images (excluding tiny icons, spacers, etc.)
+const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+const imgMatches = html.matchAll(imgRegex);
+for (const match of imgMatches) {
+  const imgUrl = match[1];
+  if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    // Exclude common unwanted images
+    if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
+      const isValid = await validateUrl(imgUrl);
+      if (isValid) {
+        mediaContent.push({
+          type: 'image',
+          url: imgUrl
+        });
+      } else {
+        console.warn(`Broken image URL detected and skipped: ${imgUrl}`);
+      }
+    }
+  }
+}
+Similarly, if you are adding media content for videos (for example, YouTube links), you can add a similar check:
+typescript
+Copy
+// Detect YouTube videos
+const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+const youtubeMatches = html.matchAll(youtubeRegex);
+for (const match of youtubeMatches) {
+  const videoId = match[1];
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  // Validate the video URL
+  const isValid = await validateUrl(videoUrl);
+  if (isValid) {
+    mediaContent.push({
+      type: 'video',
+      url: videoUrl,
+      embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+    });
+  } else {
+    console.warn(`Broken video URL detected and skipped: ${videoUrl}`);
+  }
+}
+3. (Optional) Log or Handle Broken URLs
+Decide how you want to handle URLs that do not resolve. For example, you might:
+•	Log a warning (as shown above) so that you can track which URLs are problematic.
+•	Remove or flag broken URLs so that they are not included in the final report.
+4. Test the Changes Thoroughly
+After implementing the changes:
+•	Run the deep research process with a set of test queries.
+•	Verify that any media URLs that fail to resolve (e.g., the provided examples) are excluded from the final output.
+•	Check the console logs for any warnings about broken URLs.
+________________________________________
+Summary
+In summary, you need to:
+1.	Add a validateUrl function that performs an HTTP HEAD request to verify that a URL resolves.
+2.	Modify the detectMediaContent function so that, before adding any detected media URL to the mediaContent array, it calls validateUrl and only pushes the URL if it is valid.
+3.	Optionally log warnings for broken URLs.
+4.	Test the modifications to ensure that final reports do not include broken image links.
+By following these instructions, the deep research.ts code will be enhanced to double-check media URLs before including them in the final report, thereby reducing the incidence of broken links.
+Let me know if you need further clarifications or additional details!
+

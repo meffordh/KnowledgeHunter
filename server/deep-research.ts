@@ -290,7 +290,7 @@ async function determineModelType(
 
 // Add media detection functionality
 interface MediaContent {
-  type: 'video' | 'image';
+  type: "video" | "image";
   url: string;
   title?: string;
   description?: string;
@@ -304,14 +304,15 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const mediaContent: MediaContent[] = [];
 
     // Detect YouTube videos
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of youtubeMatches) {
       const videoId = match[1];
       mediaContent.push({
-        type: 'video',
+        type: "video",
         url: `https://www.youtube.com/watch?v=${videoId}`,
-        embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
+        embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
       });
     }
 
@@ -322,10 +323,14 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       const imgUrl = match[1];
       if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         // Basic size detection from HTML attributes or URL pattern
-        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
+        if (
+          !imgUrl.includes("icon") &&
+          !imgUrl.includes("logo") &&
+          !imgUrl.includes("spacer")
+        ) {
           mediaContent.push({
-            type: 'image',
-            url: imgUrl
+            type: "image",
+            url: imgUrl,
           });
         }
       }
@@ -337,7 +342,6 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     return [];
   }
 }
-
 
 // Update researchQuery to include media content
 async function researchQuery(
@@ -352,11 +356,15 @@ async function researchQuery(
     });
 
     if (!searchResults?.success || !Array.isArray(searchResults.data)) {
-      return { findings: ["No relevant information found."], urls: [], media: [] };
+      return {
+        findings: ["No relevant information found."],
+        urls: [],
+        media: [],
+      };
     }
 
     const urls = searchResults.data.map((result) => result.url);
-    const mediaPromises = urls.map(url => detectMediaContent(url));
+    const mediaPromises = urls.map((url) => detectMediaContent(url));
     const mediaResults = await Promise.all(mediaPromises);
     const allMedia = mediaResults.flat();
 
@@ -366,16 +374,21 @@ async function researchQuery(
         const mediaForUrl = mediaResults[index];
         return `${result.title}\n${result.description}\n${
           mediaForUrl.length > 0
-            ? `Related media: ${mediaForUrl.map(m =>
-                `${m.type.toUpperCase()}: ${m.url}`).join('\n')}`
-            : ''
+            ? `Related media: ${mediaForUrl
+                .map((m) => `${m.type.toUpperCase()}: ${m.url}`)
+                .join("\n")}`
+            : ""
         }`;
       })
       .filter((text) => text.length > 0)
       .join("\n\n");
 
     if (!context) {
-      return { findings: ["No relevant information found."], urls: [], media: [] };
+      return {
+        findings: ["No relevant information found."],
+        urls: [],
+        media: [],
+      };
     }
 
     const trimmedContext = trimPrompt(context, MODEL_CONFIG.MEDIA);
@@ -384,7 +397,8 @@ async function researchQuery(
       messages: [
         {
           role: "system",
-          content: "Analyze the research data including any media content. For videos and images, evaluate their relevance and potential value to the research. Include specific references to media content in your findings when appropriate."
+          content:
+            "Analyze the research data including any media content. For videos and images, evaluate their relevance and potential value to the research. Include specific references to media content in your findings when appropriate.",
         },
         {
           role: "user",
@@ -395,7 +409,11 @@ async function researchQuery(
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      return { findings: ["Error analyzing research data."], urls, media: allMedia };
+      return {
+        findings: ["Error analyzing research data."],
+        urls,
+        media: allMedia,
+      };
     }
 
     const findings = content
@@ -404,7 +422,10 @@ async function researchQuery(
       .filter((f) => f.length > 0);
 
     return {
-      findings: findings.length > 0 ? findings : ["Analysis completed but no clear findings extracted."],
+      findings:
+        findings.length > 0
+          ? findings
+          : ["Analysis completed but no clear findings extracted."],
       urls,
       media: allMedia,
     };
@@ -430,8 +451,10 @@ async function formatReport(
   media: MediaContent[],
 ): Promise<string> {
   try {
-    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(query);
-    const modelType = "MEDIA"; // Always use MEDIA model for final report
+    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(
+      query,
+    );
+    const modelType = "DEEP"; // Always use MEDIA model for final report
     const model = MODEL_CONFIG[modelType];
 
     const trimmedQuery = trimPrompt(query, model);
@@ -439,9 +462,12 @@ async function formatReport(
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
 
     // Format media content for the AI
-    const mediaContext = media.map(m =>
-      `${m.type.toUpperCase()}: ${m.url}${m.title ? ` - ${m.title}` : ''}${m.description ? `\nDescription: ${m.description}` : ''}`
-    ).join('\n\n');
+    const mediaContext = media
+      .map(
+        (m) =>
+          `${m.type.toUpperCase()}: ${m.url}${m.title ? ` - ${m.title}` : ""}${m.description ? `\nDescription: ${m.description}` : ""}`,
+      )
+      .join("\n\n");
 
     const reportStructure = await determineReportStructure(query, learnings);
 
@@ -450,10 +476,13 @@ async function formatReport(
       messages: [
         {
           role: "system",
-          content: `You are creating a comprehensive research report that incorporates both textual findings and rich media content. Use markdown formatting and generate a verbose report (at least 3000 tokens if context permits). When referencing media content:
+          content: `You are creating a comprehensive piece of content that incorporates both textual findings and rich media content. Use markdown formatting and generate a verbose output (at least 3000 tokens if context permits). When referencing media content:
           - For videos: Include them as embedded content using provided embed codes or as markdown links
           - For images: Include them using markdown image syntax
-          Structure the report to flow naturally between text and media elements.`
+          - For other media types: Include them as markdown links
+          - For sources: use footnotes to reference the source
+          - For comparisons: include a markdown table if appropriate for the context
+          Structure the report to flow naturally between text and media elements.`,
         },
         {
           role: "user",
@@ -479,16 +508,17 @@ Important: Integrate relevant media content naturally within the report where it
       max_completion_tokens: model === MODEL_CONFIG.MEDIA ? 8000 : 4000,
     });
 
-    let report = response.choices[0]?.message?.content || "Error generating report";
+    let report =
+      response.choices[0]?.message?.content || "Error generating report";
 
     // Post-process the report to ensure proper media embedding
-    media.forEach(m => {
-      if (m.type === 'video' && m.embedCode) {
+    media.forEach((m) => {
+      if (m.type === "video" && m.embedCode) {
         // Replace any standard YouTube links with embed codes
-        const videoUrl = m.url.replace(/watch\?v=/, 'embed/');
+        const videoUrl = m.url.replace(/watch\?v=/, "embed/");
         report = report.replace(
-          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, 'g'),
-          m.embedCode
+          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, "g"),
+          m.embedCode,
         );
       }
     });
@@ -542,7 +572,9 @@ async function handleResearch(
   };
 
   try {
-    const { breadth, depth } = await determineResearchParameters(research.query);
+    const { breadth, depth } = await determineResearchParameters(
+      research.query,
+    );
     const autoResearch = { ...research, breadth, depth };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
@@ -557,7 +589,7 @@ async function handleResearch(
       progress: 0,
       totalProgress: totalQueries,
       visitedUrls: [],
-      media: []
+      media: [],
     });
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
@@ -576,7 +608,7 @@ async function handleResearch(
           progress: completedQueries,
           totalProgress: totalQueries,
           visitedUrls,
-          media: allMedia
+          media: allMedia,
         });
         const { findings, urls, media } = await researchQuery(query);
         allLearnings.push(...findings);
@@ -593,13 +625,13 @@ async function handleResearch(
       queryCount: allLearnings.length,
       learnings: allLearnings,
       urlCount: visitedUrls.length,
-      mediaCount: allMedia.length
+      mediaCount: allMedia.length,
     });
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
       visitedUrls,
-      allMedia
+      allMedia,
     );
     if (onComplete) {
       console.log("Calling onComplete callback with report and URLs");
