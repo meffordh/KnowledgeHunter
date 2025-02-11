@@ -297,13 +297,78 @@ interface MediaContent {
   embedCode?: string;
 }
 
+// Define new function for image analysis with JSON Schema
+const analyze_image = {
+  name: "analyze_image",
+  description: "Analyzes an image from a URL or Base64 data and returns key features and a summary.",
+  parameters: {
+    type: "object",
+    properties: {
+      image_url: {
+        type: "string",
+        description: "Direct URL or Base64 string of the image"
+      },
+    },
+    required: ["image_url"],
+    additionalProperties: false,
+  },
+};
+
+// Function to analyze images using GPT-4o-mini's vision capabilities
+async function analyzeImageLocally(imageUrl: string): Promise<string> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert at analyzing images and extracting key features and content. Provide detailed descriptions focusing on relevant aspects for research purposes."
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Please analyze this image and describe its key features, focusing on aspects relevant to research:" },
+            { type: "image_url", image_url: { url: imageUrl } }
+          ]
+        }
+      ],
+      max_tokens: 500
+    });
+
+    return response.choices[0]?.message?.content || "Unable to analyze image.";
+  } catch (error) {
+    console.error("Error analyzing image:", error);
+    return "Error analyzing image.";
+  }
+}
+
+// Update detectMediaContent to use the new image analysis functionality
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   try {
     const response = await fetch(url);
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // Detect YouTube videos
+    // First check for image inputs
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = html.matchAll(imgRegex);
+    for (const match of imgMatches) {
+      const imgUrl = match[1];
+      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        // Basic size detection from HTML attributes or URL pattern
+        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
+          // Analyze image using GPT-4o-mini
+          const analysis = await analyzeImageLocally(imgUrl);
+          mediaContent.push({
+            type: 'image',
+            url: imgUrl,
+            description: analysis
+          });
+        }
+      }
+    }
+
+    // Detect YouTube videos (keeping existing functionality)
     const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of youtubeMatches) {
@@ -313,22 +378,6 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         url: `https://www.youtube.com/watch?v=${videoId}`,
         embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`
       });
-    }
-
-    // Detect images (excluding tiny icons, spacers, etc.)
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = html.matchAll(imgRegex);
-    for (const match of imgMatches) {
-      const imgUrl = match[1];
-      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // Basic size detection from HTML attributes or URL pattern
-        if (!imgUrl.includes('icon') && !imgUrl.includes('logo') && !imgUrl.includes('spacer')) {
-          mediaContent.push({
-            type: 'image',
-            url: imgUrl
-          });
-        }
-      }
     }
 
     return mediaContent;
