@@ -37,17 +37,19 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Get auth token using the getToken function from useAuth
+      // Get auth token
       const token = await getToken();
 
       if (!token) {
-        throw new Error('Failed to get authentication token');
+        console.error('Failed to get authentication token');
+        throw new Error('Authentication failed. Please try logging in again.');
       }
 
-      // Get the current host and construct WebSocket URL
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      // Get the current host
       const host = window.location.host;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${host}/ws`;
+
       console.log('Connecting to WebSocket URL:', wsUrl);
 
       // Create new WebSocket connection
@@ -57,23 +59,26 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
         console.log('WebSocket connection established');
         setIsResearching(true);
 
-        // Send authentication and research data
+        // Send authentication token first
+        ws.send(JSON.stringify({ authorization: `Bearer ${token}` }));
+
+        // Then send research data
         ws.send(JSON.stringify({ 
-          authorization: `Bearer ${token}`,
-          ...research,
-          userId: user.id
+          userId: user.id,
+          ...research
         }));
       };
 
       ws.onmessage = (event) => {
         try {
-          const progress: ResearchProgress = JSON.parse(event.data);
-          setProgress(progress);
+          const data = JSON.parse(event.data);
+          console.log('Received WebSocket message:', data);
 
-          if (progress.status === 'ERROR') {
-            // Check for authentication errors
-            if (progress.error?.toLowerCase().includes('authentication') || 
-                progress.error?.toLowerCase().includes('jwt')) {
+          setProgress(data);
+
+          if (data.status === 'ERROR') {
+            if (data.error?.toLowerCase().includes('authentication') || 
+                data.error?.toLowerCase().includes('jwt')) {
               toast({
                 title: 'Session Expired',
                 description: 'Your session has expired. Please sign in again.',
@@ -83,7 +88,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
             } else {
               toast({
                 title: 'Research Error',
-                description: progress.error || 'An error occurred during research',
+                description: data.error || 'An error occurred during research',
                 variant: 'destructive',
               });
             }
@@ -91,7 +96,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
             ws.close();
           }
 
-          if (progress.status === 'COMPLETED') {
+          if (data.status === 'COMPLETED') {
             toast({
               title: 'Research Complete',
               description: 'Your research has been completed successfully',
@@ -120,6 +125,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onclose = () => {
+        console.log('WebSocket connection closed');
         if (isResearching) {
           toast({
             title: 'Connection Lost',
@@ -133,20 +139,19 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       setSocket(ws);
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to setup connection';
 
-      // Handle authentication errors
-      if (error instanceof Error && 
-          (error.message.includes('authentication') || error.message.includes('jwt'))) {
+      if (errorMessage.toLowerCase().includes('authentication')) {
         toast({
-          title: 'Session Expired',
-          description: 'Your session has expired. Please sign in again.',
+          title: 'Authentication Error',
+          description: 'Please sign in again to continue',
           variant: 'destructive',
         });
         setLocation('/auth');
       } else {
         toast({
           title: 'Connection Error',
-          description: 'Failed to setup WebSocket connection',
+          description: errorMessage,
           variant: 'destructive',
         });
       }
