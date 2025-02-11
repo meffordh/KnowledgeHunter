@@ -19,9 +19,9 @@ const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
 // Update MODEL_CONFIG to use specific model for media-rich content
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-11-20",
+  BALANCED: "gpt-4o-2024-08-06",
   DEEP: "o3-mini-2025-01-31",
-  MEDIA: "o3-mini-2025-01-31", // Using o3-mini for media processing due to its deep reasoning capabilities
+  MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing due to its cost-efficient capabilities
 } as const;
 
 // Utility: trimPrompt
