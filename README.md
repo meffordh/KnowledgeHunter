@@ -1,21 +1,45 @@
+# KnowledgeHunter
+
+**KnowledgeHunter** is an advanced research and report generation platform that leverages AI and real-time data extraction to deliver comprehensive, high-quality research reports. With dynamic query processing, customizable report templates, and robust real-time progress updates, KnowledgeHunter transforms the way research is performed and shared.
+
+[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](https://knowledgehunter.io)
+[![Developer](https://img.shields.io/badge/Developer-Hunter_Mefford-blue)](https://www.linkedin.com/in/mefford)
+
+## Overview
+
+KnowledgeHunter automates research workflows by:
+
+- **Dynamically processing queries** and determining the optimal breadth and depth
+- **Extracting web data** using Firecrawl and detecting media content
+- **Analyzing research data** with context-aware AI models
+- **Generating comprehensive reports** in Markdown with customizable sections
+- **Sending real-time progress updates** via WebSockets
+
+The application is built using modern web technologies including React with TypeScript, Express on the backend, PostgreSQL for storage, and integrates third-party services such as OpenAI, Clerk for authentication, and Firecrawl for data extraction.
+
+## Research Flow
+
+Below is a diagram that outlines the core research process:
+
+```mermaid
 flowchart TD
-    A[Start: handleResearch(research query)]
-    B[trimPrompt(query, MODEL_CONFIG.BALANCED)]
-    C[determineResearchParameters\n"Expert: Determine breadth & depth"\nModel: GPT-4o-2024-08-06]
-    D[Output: {breadth, depth}]
-    E[Loop over query iterations\n(for each depth & breadth)]
-    F[researchQuery(query)]
-    G[FirecrawlApp.search(query)\n(Returns search results)]
-    H[detectMediaContent(url)\n(Local function: extracts media)]
-    I[Compile context\nCombine search results & media;\ntrim via trimPrompt(context, MODEL_CONFIG.MEDIA)]
-    J[OpenAI Chat Completion\n"Analyze research data including media"\nModel: GPT-4o-mini-2024-07-18]
-    K[Output: {findings, urls, media}]
-    L[expandQuery(query)\n"Generate 3 follow-up questions"\nModel: GPT-4o-2024-08-06]
-    M[Output: Follow-up queries]
-    N[Accumulate all learnings, URLs, and media]
-    O[formatReport(query, learnings, visitedUrls, media)\nModel: GPT-4o-mini-2024-07-18]
-    P[Final Report (Markdown with embedded media)]
-    Q[Send progress updates via WebSocket\n(sendProgress)]
+    A["Start: handleResearch"]
+    B["Trim query with trimPrompt (BALANCED)"]
+    C["Determine research parameters (Model: BALANCED)"]
+    D["Output: breadth & depth"]
+    E["Loop over query iterations"]
+    F["Process query iteration with researchQuery"]
+    G["Search with FirecrawlApp.search"]
+    H["Detect media content (local: detectMediaContent)"]
+    I["Compile and trim context (trimPrompt with MEDIA)"]
+    J["Analyze research data (Model: MEDIA)"]
+    K["Output: findings, URLs, media"]
+    L["Generate followup queries (Model: BALANCED)"]
+    M["Output: followup queries"]
+    N["Accumulate learnings and media"]
+    O["Format report with formatReport (Model: MEDIA)"]
+    P["Final Report in Markdown"]
+    Q["Send progress updates (WebSocket: sendProgress)"]
 
     A --> B
     B --> C
@@ -28,7 +52,7 @@ flowchart TD
     I --> J
     J --> K
     K --> E
-    E -- "if depth incomplete" --> L
+    E -- Optional --> L
     L --> M
     M --> E
     E --> N
@@ -37,63 +61,49 @@ flowchart TD
     P --> Q
 ```
 
-</details>
-
 ## Key Features
 
 ### Advanced Research Capabilities
-- Dynamic query processing with AI-powered analysis
-- Intelligent depth-based exploration
-- Real-time progress tracking
-- Comprehensive source citations
-- Downloadable research reports
-- Clarifying questions generation
-- Automated follow-up queries
+
+- **Dynamic Query Processing**: Intelligent trimming and parameter determination using AI models
+- **Iterative Query Handling**: Automatically loops over query iterations and generates follow-up questions
+- **Web Data Extraction**: Integrates with Firecrawl to search the web and detect media content
+- **Context Accumulation**: Compiles and analyzes findings, URLs, and media content
+- **Real-Time Updates**: Provides live progress updates via WebSockets
 
 ### Report Customization & Rendering
-- Multiple report templates
-- Customizable citation styles
-- Flexible section ordering
-- Advanced markdown rendering with table support
-- Error-resilient content display
-- Export options (PDF, DOCX, HTML)
-- Real-time preview
+
+- **Multiple Report Templates**: Offers various styles and citation formats
+- **Flexible Section Ordering**: Lets users customize the report layout
+- **Advanced Markdown Rendering**: Robust markdown (with table support) is rendered through a dedicated component wrapped in error boundaries
+- **Export Options**: Supports PDF, DOCX, and HTML exports along with a live preview
 
 ### User Experience
-- Clean, modern interface
-- Real-time progress updates
-- Interactive query refinement
-- Markdown report rendering
-- Share and export options
-- Mobile-responsive design
-- Dark mode support
 
-### AI Integration
-- OpenAI-powered analysis
-- Firecrawl web data extraction
-- Intelligent query expansion
-- Context-aware summarization
-- Source verification
-- Media content detection
+- **Clean, Modern Interface**: A responsive, mobile-friendly design with dark mode support
+- **Interactive Query Refinement**: Real-time adjustments to research queries
+- **Real-Time Progress**: Keeps users informed with continuous updates
 
-### Technical Features
-- WebSocket real-time updates
-- React with TypeScript
-- Error boundaries for stability
-- Clerk authentication
-- PostgreSQL database
-- RESTful API endpoints
-- Robust error handling
+### AI Integration & Technical Features
+
+- **OpenAI-Powered Analysis**: Uses state-of-the-art models for data summarization and analysis
+- **Source Verification**: Ensures accurate research outputs with context-aware follow-up queries
+- **Error Resilience**: Implements error boundaries (for example, in markdown rendering) to prevent crashes
+- **Modern Tech Stack**: Built using React, TypeScript, Express, PostgreSQL, Clerk authentication, and RESTful APIs
 
 ## Prerequisites
 
+Before you begin, ensure you have the following installed and configured:
+
 - Node.js 20.x or higher
 - PostgreSQL database
-- Clerk account
-- OpenAI API key
-- Firecrawl API key
+- A Clerk account
+- An OpenAI API key
+- A Firecrawl API key
 
 ## Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
 
 ```bash
 # Database Configuration
@@ -124,7 +134,7 @@ cd KnowledgeHunter
 npm install
 ```
 
-3. Set up environment variables:
+3. Configure Environment Variables:
    - Create a `.env` file in the root directory
    - Add all required environment variables as shown above
 
@@ -140,11 +150,45 @@ npm run dev
 │   ├── src/
 │   │   ├── components/   # Reusable UI components
 │   │   ├── hooks/        # Custom React hooks
-│   │   ├── lib/          # Utility functions
+│   │   ├── lib/          # Utility functions and helper modules
 │   │   └── pages/        # Page components
 ├── server/               # Backend Express application
 │   ├── auth.ts          # Authentication setup
-│   ├── deep-research.ts # Research logic
-│   ├── routes.ts        # API routes
+│   ├── deep-research.ts # Research logic (modularized for clarity)
+│   ├── routes.ts        # API endpoints and routes
 │   └── storage.ts       # Database interface
 └── shared/              # Shared types and schemas
+```
+
+## Additional Updates & Modularization
+
+### Markdown Rendering Modularization
+
+To avoid cluttering `deep-research.ts`, we extracted the markdown rendering into its own component. For example, in `SafeMarkdown.tsx`:
+
+```tsx
+// SafeMarkdown.tsx
+import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import ErrorBoundary from './ErrorBoundary';
+
+const SafeMarkdown = ({ content }: { content: string }) => (
+  <ErrorBoundary fallback={<div>Error rendering markdown.</div>}>
+    <ReactMarkdown>{content}</ReactMarkdown>
+  </ErrorBoundary>
+);
+
+export default SafeMarkdown;
+```
+
+### Error Boundaries
+
+The new error boundary component ensures that any errors (e.g., "this.setData is not a function") during markdown rendering do not crash the entire application.
+
+### Real-Time Progress Updates
+
+The `sendProgress` function (using WebSockets) provides users with live updates throughout the research process.
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome! Please check [Issues](https://github.com/meffordh/KnowledgeHunter/issues) or open a pull request.
