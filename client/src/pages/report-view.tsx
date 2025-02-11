@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReportCustomizer } from "@/components/ReportCustomizer";
 import { Loader2 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { SafeMarkdown } from "@/components/ui/safe-markdown";
 
 export default function ReportViewPage() {
   const [location] = useLocation();
@@ -41,12 +40,7 @@ export default function ReportViewPage() {
         <Card>
           <CardContent className="p-6">
             <div className="prose prose-slate dark:prose-invert max-w-none">
-              <ReactMarkdown 
-                remarkPlugins={[remarkGfm]}
-                className="prose-table:border-collapse prose-td:border prose-td:border-gray-300 prose-td:p-2 prose-th:border prose-th:border-gray-300 prose-th:p-2"
-              >
-                {report.report}
-              </ReactMarkdown>
+              <SafeMarkdown content={report.report} />
             </div>
           </CardContent>
         </Card>

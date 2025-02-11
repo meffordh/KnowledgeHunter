@@ -1,0 +1,180 @@
+Combined PRD: Modular YouTube Video Validation & Robust Markdown Rendering
+Overview
+Two issues have been identified in our codebase:
+
+YouTube Video Embed Validation:
+Our current code in deep-research.ts performs a simple HTTP status check to decide whether to embed a YouTube video. However, since YouTube error pages also return HTTP 200, we need to perform extra validation by inspecting the page content for error markers (for example, the embedded JSON “playabilityStatus” or a simple error message such as “This video is unavailable”). To keep deep-research.ts clean, we will move this logic to its own module.
+
+Markdown Rendering Error:
+When rendering markdown (using the <Markdown> component from react‑markdown) in our report view (e.g. in our card component), an error is being thrown:
+
+“this.setData is not a function”
+This error appears to originate either from a misconfiguration or an outdated/legacy API usage in the markdown renderer or any custom renderer we might be providing. We want to encapsulate the markdown–rendering logic into a dedicated component that also uses an error boundary to prevent the entire page from crashing if an error occurs during markdown rendering.
+
+Part 1: Modularize YouTube Video Validation
+Requirements
+Create a New Module:
+
+Filename: youtubeVideoValidator.ts
+Exported Function:
+typescript
+Copy
+export async function isYouTubeVideoValid(videoUrl: string): Promise<boolean> { … }
+Functionality:
+Fetch the given video URL.
+Retrieve the response body as text.
+Inspect the text for error markers such as:
+A simple substring check (e.g. "This video is unavailable").
+Extraction and JSON parsing of a string such as ytInitialPlayerResponse—if found, checking that its playabilityStatus.status is not "ERROR".
+Return true only if no error markers are detected.
+Log (but don’t throw) any errors (e.g. network or JSON parsing errors) so that they can be reviewed and, if needed, the video can be skipped.
+Integrate the Validator:
+
+In deep-research.ts, import the helper:
+typescript
+Copy
+import { isYouTubeVideoValid } from './youtubeVideoValidator';
+Before embedding a YouTube video, call isYouTubeVideoValid(videoUrl) asynchronously.
+Only proceed to embed the video (e.g. by calling embedYouTubeVideo(videoUrl)) if the function returns true; otherwise, handle the error gracefully (log the event and display an error or placeholder).
+Testing:
+
+Write unit tests that simulate responses for both available and unavailable videos.
+Verify that network or parsing errors are caught and logged, and that unavailable videos are not embedded.
+Example Implementation:
+typescript
+Copy
+// youtubeVideoValidator.ts
+
+/**
+ * Validates that the provided YouTube video URL corresponds to an available video.
+ * It fetches the URL and inspects the page content for error markers.
+ */
+export async function isYouTubeVideoValid(videoUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(videoUrl);
+    // Note: YouTube returns 200 even for error pages.
+    const text = await response.text();
+
+    // Option A: Simple string search for an error message.
+    if (text.includes("This video is unavailable")) {
+      return false;
+    }
+
+    // Option B: Extract and parse JSON data (if available).
+    const playerResponseMatch = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+    if (playerResponseMatch) {
+      try {
+        const playerResponse = JSON.parse(playerResponseMatch[1]);
+        if (
+          playerResponse.playabilityStatus &&
+          playerResponse.playabilityStatus.status === "ERROR"
+        ) {
+          return false;
+        }
+      } catch (jsonError) {
+        console.error("Failed to parse ytInitialPlayerResponse JSON:", jsonError);
+        // Continue, defaulting to valid to avoid false negatives.
+      }
+    }
+
+    return true; // No error markers found.
+  } catch (error) {
+    console.error("Error validating YouTube video:", error);
+    // On network or other errors, return false to avoid embedding a potentially broken video.
+    return false;
+  }
+}
+And in deep-research.ts:
+
+typescript
+Copy
+import { isYouTubeVideoValid } from './youtubeVideoValidator';
+
+async function processYouTubeVideo(videoUrl: string) {
+  const isValid = await isYouTubeVideoValid(videoUrl);
+  if (!isValid) {
+    console.warn(`Skipping embed for invalid video: ${videoUrl}`);
+    // Optionally display an error message or placeholder here.
+    return;
+  }
+  // Proceed with existing embedding logic.
+  embedYouTubeVideo(videoUrl);
+}
+Part 2: Modularize and Stabilize Markdown Rendering
+Requirements
+Error Boundary for Markdown Rendering:
+
+Create an error boundary component (e.g. MarkdownErrorBoundary.tsx) that catches errors thrown by its child components.
+When an error is caught, log the error and render a fallback UI (e.g. a simple message such as “There was an error rendering this content.”).
+Modular Markdown Wrapper:
+
+Create a dedicated component (e.g. SafeMarkdown.tsx) that wraps the <ReactMarkdown> component (or your Markdown renderer) inside the error boundary.
+This component should take a content prop (a markdown string) and render it safely.
+This helps to keep our UI code (for example, in card.tsx) clean.
+Review React-Markdown Usage:
+
+Confirm that the version of react‑markdown is up‑to‑date.
+Check any custom renderers passed to the Markdown component for legacy usage (for instance, if any component is inadvertently referring to a legacy instance method such as this.setData).
+Refactor any such custom renderers into functional components that use hooks if necessary.
+Example Implementation:
+MarkdownErrorBoundary.tsx:
+
+tsx
+Copy
+import React, { Component, ErrorInfo } from 'react';
+
+interface Props {
+  children: React.ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+}
+
+export class MarkdownErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Error rendering markdown:", error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <div>There was an error rendering this content.</div>;
+    }
+    return this.props.children;
+  }
+}
+SafeMarkdown.tsx:
+
+tsx
+Copy
+import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import { MarkdownErrorBoundary } from './MarkdownErrorBoundary';
+
+interface SafeMarkdownProps {
+  content: string;
+}
+
+export function SafeMarkdown({ content }: SafeMarkdownProps) {
+  return (
+    <MarkdownErrorBoundary>
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </MarkdownErrorBoundary>
+  );
+}
+Usage in Card Component (e.g. card.tsx):
+
+Replace any direct usage of <Markdown> with:
+
+tsx
+Copy
+<SafeMarkdown content={markdownContent} />

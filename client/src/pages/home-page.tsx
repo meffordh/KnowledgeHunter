@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { ShareButton } from "@/components/ui/share-button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { SiGithub } from "react-icons/si";
 import {
@@ -22,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Search, Copy, Download, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { SafeMarkdown } from "@/components/ui/safe-markdown";
 
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
@@ -334,12 +334,7 @@ export default function HomePage() {
                               url={window.location.href}
                             />
                           </div>
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            className="prose-table:border-collapse prose-td:border prose-td:border-gray-300 prose-td:p-2 prose-th:border prose-th:border-gray-300 prose-th:p-2"
-                          >
-                            {progress.report}
-                          </ReactMarkdown>
+                          <SafeMarkdown content={progress.report} />
                         </CardContent>
                       </Card>
 
