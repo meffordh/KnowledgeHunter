@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ReportCustomizer } from "@/components/ReportCustomizer";
 import { Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function ReportViewPage() {
   const [location] = useLocation();
@@ -35,12 +36,17 @@ export default function ReportViewPage() {
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">{report.query}</h1>
-      
+
       <div className="grid gap-6 md:grid-cols-[2fr,1fr]">
         <Card>
           <CardContent className="p-6">
             <div className="prose prose-slate dark:prose-invert max-w-none">
-              <ReactMarkdown>{report.report}</ReactMarkdown>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                className="prose-table:border-collapse prose-td:border prose-td:border-gray-300 prose-td:p-2 prose-th:border prose-th:border-gray-300 prose-th:p-2"
+              >
+                {report.report}
+              </ReactMarkdown>
             </div>
           </CardContent>
         </Card>

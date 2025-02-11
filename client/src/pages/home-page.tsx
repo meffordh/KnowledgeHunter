@@ -8,6 +8,7 @@ import { ShareButton } from "@/components/ui/share-button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { SiGithub } from "react-icons/si";
 import {
   Form,
@@ -331,10 +332,14 @@ export default function HomePage() {
                             <ShareButton
                               content={`Check out my research on: ${form.getValues().query}`}
                               url={window.location.href}
-                              // Remove reportId prop since it's not in the progress type
                             />
                           </div>
-                          <ReactMarkdown>{progress.report}</ReactMarkdown>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            className="prose-table:border-collapse prose-td:border prose-td:border-gray-300 prose-td:p-2 prose-th:border prose-th:border-gray-300 prose-th:p-2"
+                          >
+                            {progress.report}
+                          </ReactMarkdown>
                         </CardContent>
                       </Card>
 

@@ -1,0 +1,96 @@
+Overview
+ResearchHunter currently renders research reports using the ReactMarkdown component. However, when a research report contains markdown table syntax, the tables do not display correctly—often appearing as plain text rather than as structured HTML table elements. This feature request aims to fix table rendering by updating the markdown rendering configuration and adding necessary CSS adjustments.
+
+Problem Statement
+Current Behavior:
+The research report output (both in the final report view and the in‑progress report rendered on the home page) is rendered with <ReactMarkdown>{...}</ReactMarkdown>. Without the proper GitHub Flavored Markdown (GFM) support (via the remark‑gfm plugin), tables in the markdown are not parsed into <table>, <thead>, <tbody>, <tr>, <th>, and <td> elements. As a result, any report content that includes tables is not visualized as intended.
+
+Impact:
+Users see improperly rendered reports when a report includes tables. This impacts readability and the professional presentation of research findings.
+
+Proposed Solution
+Markdown Processing Update:
+Configure ReactMarkdown to use the remark‑gfm plugin. This plugin adds support for GFM extensions (including table syntax) so that markdown tables are rendered as proper HTML table elements.
+
+CSS/Styling Update:
+Ensure that table elements have appropriate styling. In addition to the default Tailwind Typography (prose) classes already used in report rendering, add or override CSS rules as needed so that tables have proper borders, spacing, and width.
+
+Detailed Implementation Instructions
+1. Update ReactMarkdown Usage in Report Rendering
+Files Affected:
+Home Page (In‑progress Report):
+File: client/src/pages/home-page.tsx
+Locate the section where the final report is rendered within a Card. It currently uses:
+
+jsx
+Copy
+<ReactMarkdown>{progress.report}</ReactMarkdown>
+Report View Page:
+File: client/src/pages/report-view.tsx
+Locate the section where the full report is rendered:
+
+jsx
+Copy
+<ReactMarkdown>{report.report}</ReactMarkdown>
+Changes Required:
+Import the Plugin:
+At the top of both files, add the following import:
+jsx
+Copy
+import remarkGfm from "remark-gfm";
+Update the ReactMarkdown Component:
+Modify the components to pass the remark‑gfm plugin as follows:
+In home-page.tsx, update:
+jsx
+Copy
+<ReactMarkdown remarkPlugins={[remarkGfm]}>{progress.report}</ReactMarkdown>
+In report-view.tsx, update:
+jsx
+Copy
+<ReactMarkdown remarkPlugins={[remarkGfm]}>{report.report}</ReactMarkdown>
+2. Ensure Dependency Installation
+Verify that the dependency "remark-gfm": "^3.0.1" (or a compatible version) is listed in package.json. If not, install it via:
+bash
+Copy
+npm install remark-gfm@3.0.1
+(This is based on previous experience with ReactMarkdown v8 and remark‑gfm v3 as shown in 
+GITHUB.COM
+ and 
+DEV.TO
+.)
+3. Adjust CSS for Table Styling (If Needed)
+Although Tailwind CSS’s Typography (prose) class is already applied in CardContent (e.g., className="prose dark:prose-invert max-w-none py-4"), you may want to further adjust table styles.
+Option A: Tailwind Override
+In your global CSS file (client/src/index.css) or within a specific component style file, add custom rules:
+css
+Copy
+table {
+  @apply border-collapse w-full my-4;
+}
+th, td {
+  @apply border border-gray-300 p-2 text-left;
+}
+Option B: Inline Class Names
+Alternatively, update the container that wraps the ReactMarkdown component to include custom classes that target table elements if needed.
+4. Testing & Verification
+Functional Testing:
+Create a research report that contains a valid markdown table, for example:
+markdown
+Copy
+| Column 1 | Column 2 |
+| -------- | -------- |
+| Data 1   | Data 2   |
+Verify that when the report is completed and rendered on the home page and on /reports/:id, the table is rendered as an HTML table with visible borders and proper cell padding.
+Browser Testing:
+Test in various browsers (e.g., Firefox, Chrome) to ensure consistent behavior.
+Console Errors:
+Check the browser console for any errors or warnings.
+Acceptance Criteria
+The final research report (as rendered on both the home page and the report view page) properly displays markdown tables as HTML tables.
+Tables are styled with borders, proper spacing, and are responsive.
+No additional runtime errors appear in the console after making the changes.
+The solution uses remark‑gfm (and, if necessary, rehype‑raw) with ReactMarkdown to process markdown correctly.
+Additional Notes
+This feature request only targets the rendering of research reports. The report history page displays a preview (text slice) and does not need changes unless full markdown rendering is desired.
+The instructions assume that the codebase already uses Tailwind CSS and the Shadcn UI components. Any modifications should follow the established code style and practices of the project.
+This PRD should provide clear, actionable steps for a junior level developer agent to implement the feature without introducing errors. The developer is expected to update the ReactMarkdown usage, ensure proper dependency installation, and adjust styling to achieve a consistent and correct rendering of markdown tables in research reports.
