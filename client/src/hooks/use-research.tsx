@@ -40,7 +40,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       // Get the current host and construct WebSocket URL
       const host = window.location.host;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${host}/ws`;
+      const wsUrl = `${protocol}//${host}/ws`; // Always use /ws path
       console.log('Connecting to WebSocket URL:', wsUrl);
 
       // Get auth token from Clerk session
@@ -50,6 +50,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Failed to get authentication token');
       }
 
+      // Create new WebSocket connection
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
