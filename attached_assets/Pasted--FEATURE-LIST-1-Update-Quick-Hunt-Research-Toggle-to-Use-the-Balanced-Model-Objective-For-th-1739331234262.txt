@@ -1,0 +1,149 @@
+
+FEATURE LIST
+
+1. Update Quick Hunt Research Toggle to Use the Balanced Model
+Objective:
+For the quick hunt (fast mode) research toggle, update the code so that it always uses the balanced model (gpt4o) rather than the deep reasoning model (o3‑mini).
+
+Steps:
+Edit the Report Generation Logic in formatReport:
+Open File: server/deep-research.ts and locate the formatReport function.
+
+Modify the Model Selection:
+Find the existing code where the model is determined—if it uses a call like determineModelType. Change it so that when research.fastMode is true, the balanced model is forced.
+
+Before (hypothetical snippet):
+
+ts
+Copy
+const modelType = await determineModelType(research.query, learnings);
+const model = MODEL_CONFIG[modelType];
+After (updated snippet):
+
+ts
+Copy
+let model: string;
+if (research.fastMode) {
+  // In quick hunt (fast mode), always use the balanced model for speed.
+  model = MODEL_CONFIG.BALANCED; // e.g., "gpt-4o-2024-11-20"
+} else {
+  // For full research, decide based on query complexity.
+  const modelType = await determineModelType(research.query, learnings);
+  model = MODEL_CONFIG[modelType];
+}
+Ensure: All calls in fast mode now reference MODEL_CONFIG.BALANCED.
+
+Rationale:
+Using the balanced model for quick research reduces latency and cost while still providing adequate results for fast mode, even if it sacrifices some depth.
+
+2. Improve the Progress Bar Handler in Fast Mode
+Objective:
+Prevent the progress bar in fast mode from immediately jumping to 100% (due to a low total progress value) by splitting the research process into sub‑steps and updating the progress gradually.
+
+Steps:
+Edit the handleResearch Function:
+Open File: server/deep-research.ts and locate the handleResearch function where progress updates are sent via WebSocket.
+
+Modify Progress Calculation for Fast Mode:
+In fast mode, instead of setting total progress to 1, use a small fixed number (for example, 3 sub‑steps) so that you can update the progress over time. Insert additional progress updates at key points.
+
+Before (hypothetical snippet in fast mode):
+
+ts
+Copy
+if (research.fastMode) {
+  // Old approach: single iteration
+  sendProgress({
+    status: "IN_PROGRESS",
+    currentQuery: research.query,
+    learnings: [],
+    progress: 1,
+    totalProgress: 1,
+    visitedUrls: [],
+    media: [],
+  });
+  // Then later, when complete:
+  sendProgress({
+    status: "COMPLETED",
+    report: formattedReport,
+    progress: 1,
+    totalProgress: 1,
+    learnings: allLearnings,
+    visitedUrls,
+    media: allMedia,
+  });
+}
+After (updated snippet):
+
+ts
+Copy
+if (research.fastMode) {
+  // For fast mode, define three sub-steps:
+  const totalProgress = 3;
+  
+  // Step 1: Initialization
+  sendProgress({
+    status: "IN_PROGRESS",
+    currentQuery: research.query,
+    learnings: [],
+    progress: 1,  // initial progress
+    totalProgress,
+    visitedUrls: [],
+    media: [],
+  });
+  
+  // [Perform the single research iteration…]
+  // You might add a small delay or intermediate update here:
+  // For example, after fetching research data:
+  sendProgress({
+    status: "IN_PROGRESS",
+    currentQuery: research.query,
+    learnings: allLearnings,
+    progress: 2,
+    totalProgress,
+    visitedUrls,
+    media: allMedia,
+  });
+  
+  // Finally, after formatting the report:
+  sendProgress({
+    status: "COMPLETED",
+    currentQuery: research.query,
+    learnings: allLearnings,
+    progress: totalProgress,
+    totalProgress,
+    report: formattedReport,
+    visitedUrls,
+    media: allMedia,
+  });
+} else {
+  // Existing loop logic for normal mode remains unchanged...
+}
+Ensure:
+Fast mode now uses a totalProgress value greater than 1 (here, 3) so that the progress bar moves gradually.
+The progress updates are sent at logical sub‑steps (initialization, processing, finalizing).
+Rationale:
+This change prevents the user interface from showing an instant “100% complete” state and instead gives visual feedback that the process is progressing—even if the overall research is fast. This improves the user experience.
+
+3. General Code Quality & Modularity
+Objective:
+Ensure that any new changes (or refactorings) keep the code modular and maintain a clear separation of concerns. Avoid complex files over 500 lines.
+
+Steps:
+Separate Helper Functions into Their Own Modules:
+
+Create new files (e.g., server/helpers/imageUtils.ts and server/helpers/visionUtils.ts) for functions like getImageDimensions and analyzeImageWithVision.
+Import these modules in server/deep-research.ts instead of having all logic in one file.
+Comment Your Changes:
+
+Add comments above new functions and within updated sections of code to explain why the changes were made.
+If any file exceeds 500 lines, consider splitting it logically (e.g., separate out API calls, helper functions, etc.) to ensure maintainability.
+Rationale:
+Keeping code modular and well-commented helps in future debugging, testing, and future feature enhancements. It also makes it easier for junior developers (or AI agents) to understand and extend the codebase.
+
+By following the tasks above, you will achieve the following:
+
+Improved quick hunt (fast mode): Fast mode now uses the balanced model (gpt4o) to speed up processing.
+Better progress feedback: The progress bar now updates gradually in fast mode (via sub‑steps) rather than jumping immediately to 100%.
+Cleaner codebase: New helper functions are modularized to ensure that files remain focused and manageable.
+Proceed with these changes step by step, test each modification, and ensure that both fast and normal research flows operate as expected.
