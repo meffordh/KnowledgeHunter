@@ -5,6 +5,7 @@ import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
+import sizeOf from 'image-size';
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -292,7 +293,7 @@ interface MediaContent {
   embedCode?: string;
 }
 
-// Fix for undefined URL issue in detectMediaContent
+// Update detectMediaContent function with dimension checking and vision analysis
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   if (!url) {
     console.warn("Received empty URL in detectMediaContent");
@@ -303,17 +304,14 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // Detect YouTube videos
-    const youtubeRegex =
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    // Detect YouTube videos (existing code remains unchanged)
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
 
-    // Process each YouTube video match
     for (const match of youtubeMatches) {
       const videoId = match[1];
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-      // Validate the video before adding it
       const isValid = await isYouTubeVideoValid(videoUrl);
       if (isValid) {
         mediaContent.push({
@@ -321,27 +319,43 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
           url: videoUrl,
           embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
         });
-      } else {
-        console.warn(`Skipping invalid YouTube video: ${videoUrl}`);
       }
     }
 
-    // Fix for undefined matches in image detection
+    // Enhanced image detection with dimension checking and vision analysis
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
     const imgMatches = Array.from(html.matchAll(imgRegex));
+
     for (const match of imgMatches) {
       const imgUrl = match[1];
-      if (imgUrl && imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        if (
-          !imgUrl.includes("icon") &&
-          !imgUrl.includes("logo") &&
-          !imgUrl.includes("spacer")
-        ) {
+      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Skip images with undesired keywords
+      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
+        continue;
+      }
+
+      try {
+        // Get image dimensions
+        const dimensions = await getImageDimensions(imgUrl);
+        if (!dimensions) continue;
+
+        // Only consider images between 400 and 1500 pixels wide
+        if (dimensions.width < 400 || dimensions.width > 1500) continue;
+
+        // Use vision model to analyze the image
+        const visionInfo = await analyzeImageWithVision(imgUrl);
+        if (visionInfo.isUseful) {
           mediaContent.push({
             type: "image",
             url: imgUrl,
+            title: visionInfo.title,
+            description: visionInfo.description,
           });
         }
+      } catch (error) {
+        console.error("Error processing image:", imgUrl, error);
+        continue;
       }
     }
 
@@ -349,6 +363,66 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
   } catch (error) {
     console.error("Error detecting media content:", error);
     return [];
+  }
+}
+
+// New helper function for getting image dimensions
+async function getImageDimensions(imageUrl: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+    const buffer = await response.buffer();
+    const dimensions = sizeOf(buffer);
+    return dimensions;
+  } catch (error) {
+    console.error('Error getting image dimensions for', imageUrl, error);
+    return null;
+  }
+}
+
+// New helper function for vision analysis
+async function analyzeImageWithVision(imageUrl: string): Promise<{
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}> {
+  try {
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Analyze this image and determine if it's useful for research purposes:"
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl
+              }
+            }
+          ],
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 150,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content || !content.trim().startsWith("{")) {
+      return { isUseful: false };
+    }
+    return JSON.parse(content);
+  } catch (error) {
+    console.error("Vision analysis error for", imageUrl, error);
+    return { isUseful: false };
   }
 }
 
@@ -498,21 +572,21 @@ async function formatReport(
         {
           role: "user",
           content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
-            
+
             Findings:
             ${trimmedLearnings.join("\n")}
-            
+
             Available Media Content:
             ${mediaContext}
-            
+
             Follow this structure:
             ${reportStructure}
-            
+
             Include a comprehensive Sources section with these URLs:
             ${trimmedVisitedUrls.join("\n")}
-            
+
             ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
-            
+
             Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
         },
       ],
@@ -699,4 +773,4 @@ async function handleResearch(
   }
 }
 
-export { generateClarifyingQuestions, handleResearch };
+export { generateClarifyingQuestions, handleResearch, detectMediaContent, getImageDimensions, analyzeImageWithVision };
