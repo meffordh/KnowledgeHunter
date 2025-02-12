@@ -1,0 +1,148 @@
+Fast Mode & Enhanced Research Query Input
+This PRD adds two new features to the research module:
+
+Fast Mode Toggle: A user‑selectable option that bypasses the full AI parameter detection and multi‑iteration research process, running only a single iteration (breadth = 1, depth = 1) to return a quick Markdown report.
+Enhanced Query Input Box: Replace the current single‑line query input with a multi‑line text area that starts with 3 visible lines and expands as needed.
+All changes must be modular and maintain backward compatibility. If any file (especially on the backend) becomes longer than 500 lines, refactor helper functions into separate modules (e.g. parameterUtils.ts).
+
+1. Fast Mode Toggle
+Rationale:
+Users sometimes need rapid results. Fast Mode will bypass the deep, multi‑iteration research flow by forcing a single iteration. This quick “fast” process reduces waiting time while still generating a report in Markdown.
+
+Frontend Changes (File: client/src/pages/home-page.tsx):
+Import the Switch Component:
+
+At the top of the file, add:
+tsx
+Copy
+import { Switch } from "@/components/ui/switch";
+Add a Toggle UI Element:
+
+Within the research form (near the query input), add a new toggle control with a label.
+For example, insert the following code inside your component’s JSX (e.g. above the submit button):
+tsx
+Copy
+const [fastMode, setFastMode] = useState(false);
+// ...
+<div className="flex items-center gap-2 mb-4">
+  <span className="text-sm">Fast Mode:</span>
+  <Switch checked={fastMode} onCheckedChange={setFastMode} />
+  <span className="text-sm">{fastMode ? "Fast Mode" : "Let AI Decide"}</span>
+</div>
+Rationale: This lets the user explicitly choose a “Fast Mode” which will be sent to the backend along with the query.
+Pass the Mode in Form Submission:
+
+In the form submission handler (onSubmit), modify the code so that the research object includes the fast mode flag:
+tsx
+Copy
+const onSubmit = (data: Research) => {
+  // Include the new fastMode flag
+  const research = { ...data, fastMode };
+  startResearch(research);
+};
+Rationale: This flag tells the backend which processing flow to execute.
+Enhanced Query Input Box (File: client/src/pages/home-page.tsx):
+Replace <Input> with <Textarea>:
+Locate the existing FormField for the research query.
+Replace the <Input> component with the <Textarea> component from @/components/ui/textarea.
+For example, change:
+tsx
+Copy
+<FormControl>
+  <Input placeholder="Enter your research topic..." {...field} />
+</FormControl>
+to:
+tsx
+Copy
+<FormControl>
+  <Textarea
+    placeholder="Enter your research topic..."
+    {...field}
+    rows={3} // start with 3 visible lines
+    className="mt-2 text-lg transition-all duration-200 focus:scale-[1.01]"
+  />
+</FormControl>
+Rationale: A multi‑line input supports longer queries and improves the user experience.
+2. Backend Changes
+Rationale:
+The backend must detect if Fast Mode is enabled and adjust its processing accordingly. When fastMode is true, skip the deep parameter determination and iterative query expansion—using fixed values to return a report quickly.
+
+Modifications in server/deep-research.ts:
+Check for Fast Mode at the Start of handleResearch:
+
+Open the file server/deep-research.ts.
+In the handleResearch function (which processes the research query), add a check for research.fastMode.
+Example Directive:
+ts
+Copy
+async function handleResearch(
+  research: Research,
+  ws: WebSocket,
+  onComplete?: (report: string, visitedUrls: string[]) => Promise<void>
+) {
+  const sendProgress = (progress: ResearchProgress) => { /* ... */ };
+
+  try {
+    let breadth: number, depth: number;
+    if (research.fastMode) {
+      // Fast Mode: set parameters to run only one iteration
+      breadth = 1;
+      depth = 1;
+      console.log("Fast Mode active: Overriding breadth and depth to 1.");
+    } else {
+      // Existing behavior: determine parameters via AI
+      ({ breadth, depth } = await determineResearchParameters(research.query));
+    }
+    const autoResearch = { ...research, breadth, depth };
+    // Continue with the iterative loop...
+    // If fastMode is true, the loop will only execute one iteration.
+    // (Make sure to remove or skip any follow-up query expansion logic when fastMode is active.)
+    // ...
+  } catch (error) {
+    // Existing error handling
+  }
+}
+Rationale: This code ensures that if Fast Mode is selected, the research process runs only one iteration by fixing breadth and depth to 1.
+Skip Follow‑Up Query Expansion:
+
+Inside your iterative loop (usually a for loop that iterates over depth), add a conditional check:
+ts
+Copy
+if (!research.fastMode && d < autoResearch.depth - 1) {
+  const followUpQueries = await expandQuery(query);
+  newQueries.push(...followUpQueries);
+}
+Rationale: When in Fast Mode, no additional follow-up queries should be generated, ensuring a faster, one‑iteration process.
+Ensure Progress Updates Reflect Fast Mode:
+
+In all sendProgress calls, the total expected progress should be adjusted accordingly (i.e. totalProgress should equal 1 if fastMode is enabled).
+Rationale: This keeps the user informed correctly about the quick, streamlined process.
+3. Modularity & Refactoring
+File Size & Separation:
+If you notice that any file (particularly server/deep-research.ts) exceeds 500 lines after your modifications, refactor helper functions into separate modules such as:
+parameterUtils.ts for parameter determination.
+researchFlowUtils.ts for iterative loop handling.
+Rationale: Modular code is easier to read, maintain, and test. Always aim for single‑responsibility modules.
+4. Testing & Verification
+Manual Testing:
+
+Run the application and navigate to the research page.
+Confirm that:
+The research query input is now a multi‑line Textarea starting with 3 lines.
+A toggle switch labeled “Fast Mode” (or “Let AI Decide”) is visible and can be switched.
+Submit a research query with Fast Mode enabled. Verify that:
+The backend logs show that breadth and depth are set to 1.
+The research report is generated quickly (one iteration only).
+Submit a query with Fast Mode disabled. Confirm that the full AI‑driven process is executed.
+Unit Tests:
+
+If available, add or update tests for handleResearch to simulate both modes.
+Ensure that when fastMode is true, only one iteration runs and fixed parameter values are used.
+5. Rationale Summary
+User-Centric Improvements:
+• Fast Mode gives users a rapid report option.
+• Enhanced Textarea supports longer queries and better user experience.
+Backend Efficiency:
+• Simplifying the research flow for Fast Mode reduces processing time and token usage.
+Code Quality:
+• Ensuring changes are modular prevents files from becoming too large and promotes easier maintenance.
