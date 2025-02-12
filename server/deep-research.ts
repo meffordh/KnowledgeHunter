@@ -307,33 +307,45 @@ async function analyzeImagesWithVision(imageUrls: string[]): Promise<Array<{
       messages: [
         {
           role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the array of image URLs provided and determine for each image if it is useful for research purposes. For each image, return a JSON object with: 'url' (the original URL), 'isUseful' (boolean), 'title' (short descriptive title), and 'description' (brief description). Return a JSON array of such objects.",
+          content: "You are a visual analysis assistant. Analyze the array of image URLs provided and determine for each image if it is useful for research purposes. For each image, return a JSON object with: 'url' (the original URL), 'isUseful' (boolean), 'title' (short descriptive title), and 'description' (brief description)."
         },
         {
           role: "user",
           content: [
-            {
-              type: "text",
-              text: "Analyze these images and determine which ones could be useful for research purposes:",
-            },
+            { type: "text", text: "Analyze these images and determine which ones could be useful for research purposes:" },
             ...imageUrls.map(url => ({
               type: "image_url",
-              image_url: { url }
+              image_url: {
+                url: url,
+                detail: "low"
+              }
             }))
-          ],
-        },
+          ]
+        }
       ],
-      response_format: { type: "json_object" },
-      max_tokens: 1000,
+      response_format: { type: "json_object" }
     });
 
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) {
+    if (!content) {
+      console.warn("No content returned from vision analysis");
       return imageUrls.map(url => ({ url, isUseful: false }));
     }
-    const results = JSON.parse(content);
-    return Array.isArray(results.images) ? results.images : imageUrls.map(url => ({ url, isUseful: false }));
+
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed.images)) {
+        return parsed.images;
+      } else if (Array.isArray(parsed)) {
+        return parsed;
+      } else {
+        console.warn("Unexpected response format from vision analysis:", parsed);
+        return imageUrls.map(url => ({ url, isUseful: false }));
+      }
+    } catch (parseError) {
+      console.error("Error parsing vision analysis response:", parseError);
+      return imageUrls.map(url => ({ url, isUseful: false }));
+    }
   } catch (error) {
     console.error("Vision batch analysis error:", error);
     return imageUrls.map(url => ({ url, isUseful: false }));
@@ -345,6 +357,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     console.warn("Received empty URL in detectMediaContent");
     return [];
   }
+
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -356,8 +369,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const mediaContent: MediaContent[] = [];
 
     // YouTube video detection remains unchanged
-    const youtubeRegex =
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
 
     for (const match of youtubeMatches) {
@@ -379,9 +391,11 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const imgMatches = Array.from(html.matchAll(imgRegex));
     const imageUrls: string[] = [];
 
-    // Collect and normalize image URLs
+    // Extract and normalize image URLs
     for (const match of imgMatches) {
       let imgUrl = match[1];
+
+      // Basic URL validation
       if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
 
       // Skip unwanted images
@@ -390,37 +404,50 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
 
       // Handle relative URLs
-      if (imgUrl.startsWith("/")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-      } else if (!imgUrl.startsWith("http")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
+      try {
+        if (imgUrl.startsWith("/")) {
+          const urlObj = new URL(url);
+          imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+        } else if (!imgUrl.startsWith("http")) {
+          const urlObj = new URL(url);
+          imgUrl = new URL(imgUrl, urlObj.href).toString();
+        }
+        imageUrls.push(imgUrl);
+      } catch (error) {
+        console.warn("Error normalizing image URL:", error);
+        continue;
       }
-
-      imageUrls.push(imgUrl);
     }
 
     if (imageUrls.length > 0) {
+      console.log(`Processing ${imageUrls.length} images from ${url}`);
+
       // First, analyze all images with vision model
       const visionResults = await analyzeImagesWithVision(imageUrls);
+      console.log(`Received vision analysis for ${visionResults.length} images`);
 
       // Then check dimensions only for useful images
       for (const result of visionResults) {
-        if (!result.isUseful) continue;
+        if (!result.isUseful) {
+          console.debug(`Skipping non-useful image: ${result.url}`);
+          continue;
+        }
 
         try {
           const dimensions = await getImageDimensions(result.url);
           if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+            console.log(`Adding valid image: ${result.url} (${dimensions.width}x${dimensions.height})`);
             mediaContent.push({
               type: "image",
               url: result.url,
               title: result.title,
               description: result.description,
             });
+          } else {
+            console.debug(`Image dimensions out of range: ${result.url}`, dimensions);
           }
         } catch (error) {
-          console.error("Error processing image dimensions:", error);
+          console.error("Error checking image dimensions:", error);
           continue;
         }
       }
