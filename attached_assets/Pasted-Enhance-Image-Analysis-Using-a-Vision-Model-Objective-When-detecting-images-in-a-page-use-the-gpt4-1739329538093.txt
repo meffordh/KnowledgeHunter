@@ -1,0 +1,160 @@
+Enhance Image Analysis Using a Vision Model
+Objective:
+When detecting images in a page, use the gpt4o‑mini (vision model) to analyze the image content and return descriptive information. Then, use that information to decide if the image is “useful” (i.e. should be included in the report).
+
+Steps:
+Install a Package for Image Dimensions (if not already present):
+To check an image’s width without downloading the full image, install a lightweight package (e.g. image-size):
+
+bash
+Copy
+npm install image-size
+Rationale: This package lets you quickly extract the dimensions so you can filter images by width.
+
+Create a Helper Function for Getting Image Dimensions:
+In a new file (or at the top of server/deep-research.ts if you prefer to keep helper functions together), add:
+
+File: server/deep-research.ts (or a new helper file e.g. server/helpers/imageUtils.ts – then import it)
+
+ts
+Copy
+// New helper: getImageDimensions
+import sizeOf from 'image-size';
+import fetch from 'node-fetch';
+
+export async function getImageDimensions(imageUrl: string): Promise<{ width: number; height: number } | null> {
+  try {
+    // Fetch a small chunk of the image (using range headers may be an option)
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+    const buffer = await response.buffer();
+    const dimensions = sizeOf(buffer);
+    return dimensions;
+  } catch (error) {
+    console.error('Error getting image dimensions for', imageUrl, error);
+    return null;
+  }
+}
+Explanation: This function fetches the image (or at least enough data to measure it) and uses image-size to extract its dimensions.
+
+Create a Helper Function for Vision Analysis:
+Add another helper that calls the OpenAI API using the gpt4o‑mini vision model to analyze an image URL.
+
+File: server/deep-research.ts (or a new file like server/helpers/visionUtils.ts)
+
+ts
+Copy
+// New helper: analyzeImageWithVision
+import OpenAI from "openai";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export async function analyzeImageWithVision(imageUrl: string): Promise<{
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+  embedCode?: string;
+}> {
+  try {
+    // Call OpenAI with the vision model (gpt4o-mini)
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini-2024-07-18",  // Use the vision model name here
+      messages: [
+        {
+          role: "system",
+          content: "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description), and optionally embedCode if available. Only return valid JSON.",
+        },
+        {
+          role: "user",
+          content: `Analyze this image: ${imageUrl}`,
+        },
+      ],
+      max_completion_tokens: 150,
+      response_format: "json",
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content || !content.trim().startsWith("{")) {
+      return { isUseful: false };
+    }
+    const visionData = JSON.parse(content);
+    return visionData;
+  } catch (error) {
+    console.error("Vision analysis error for", imageUrl, error);
+    return { isUseful: false };
+  }
+}
+Rationale: This function uses the gpt4o‑mini model (which is optimized for quick visual analysis) to extract information about the image. The returned JSON should tell you if the image is useful and supply any extra details that can be passed along.
+
+Update Image Detection Logic in detectMediaContent:
+In the function detectMediaContent (file: server/deep-research.ts), update the loop that processes <img> tags to add both dimension filtering and vision analysis.
+
+Before (existing code):
+
+ts
+Copy
+const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+const imgMatches = Array.from(html.matchAll(imgRegex));
+for (const match of imgMatches) {
+  const imgUrl = match[1];
+  if (imgUrl && imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+    if (
+      !imgUrl.includes("icon") &&
+      !imgUrl.includes("logo") &&
+      !imgUrl.includes("spacer")
+    ) {
+      mediaContent.push({
+        type: "image",
+        url: imgUrl,
+      });
+    }
+  }
+}
+After (modified code):
+
+ts
+Copy
+import { getImageDimensions } from "./helpers/imageUtils"; // adjust import path if moved to a separate file
+import { analyzeImageWithVision } from "./helpers/visionUtils"; // adjust import path accordingly
+
+// Updated image processing logic:
+const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+const imgMatches = Array.from(html.matchAll(imgRegex));
+for (const match of imgMatches) {
+  const imgUrl = match[1];
+  if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+  
+  // Skip images with undesired keywords
+  if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
+    continue;
+  }
+  
+  // Get image dimensions
+  const dimensions = await getImageDimensions(imgUrl);
+  if (!dimensions) continue;
+  const { width } = dimensions;
+  
+  // Only consider images between 400 and 1500 pixels wide
+  if (width < 400 || width > 1500) continue;
+  
+  // Use the vision model to analyze the image
+  const visionInfo = await analyzeImageWithVision(imgUrl);
+  if (visionInfo.isUseful) {
+    mediaContent.push({
+      type: "image",
+      url: imgUrl,
+      title: visionInfo.title,
+      description: visionInfo.description,
+      embedCode: visionInfo.embedCode,
+    });
+  }
+}
+Ensure:
+
+All new helper functions are imported correctly.
+The dimension filtering (400 ≤ width ≤ 1500) is enforced.
+Only images that pass the vision analysis (i.e. visionInfo.isUseful === true) are added.
+Rationale:
+This modular update ensures that image processing is more intelligent:
+
+Dimension filtering prevents very small or very large images from being included.
+Vision analysis uses the gpt4o‑mini model to “read” the image and decide if it adds value to the final report.
