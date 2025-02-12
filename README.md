@@ -32,7 +32,7 @@ flowchart TD
     A["Start: handleResearch"]
     B["Trim query with trimPrompt (BALANCED)"]
     C["Determine research parameters (Model: BALANCED)"]
-    D["Output: breadth & depth\n(Quick Hunter vs Deep Hunter)"]
+    D["Output: breadth & depth (Quick Hunter vs Deep Hunter)"]
     E["Loop over query iterations"]
     F["Process iteration with researchQuery"]
     G["Search via FirecrawlApp.search"]
