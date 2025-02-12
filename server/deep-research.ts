@@ -5,7 +5,7 @@ import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
-import sizeOf from 'image-size';
+import sizeOf from "image-size";
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -22,7 +22,7 @@ const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 // Update MODEL_CONFIG to use correct model names and remove redundant models
 const MODEL_CONFIG = {
   BALANCED: "gpt-4o-2024-11-20", // Used for both fast and normal mode
-  DEEP: "o3-mini-2025-01-31",    // Used only for detailed analysis in normal mode
+  DEEP: "o3-mini-2025-01-31", // Used only for detailed analysis in normal mode
   MEDIA: "gpt-4o-mini-2024-07-18", // Used for media processing
 } as const;
 
@@ -94,7 +94,7 @@ async function determineResearchParameters(
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values.",
+            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values. Additional depth will allow for more refinement in queries to search recursively based on knowledge gained and more breadth will review more sources for each recursive query level.",
         },
         {
           role: "user",
@@ -263,7 +263,7 @@ async function determineModelType(
         {
           role: "system",
           content:
-            "You are an expert at determining optimal AI model selection based on query complexity and research data volume. Choose between BALANCED and DEEP modes based on the following criteria:\n\nBALANCED: For multi-faceted topics with moderate complexity and data volume.\nDEEP: For complex technical topics or when there are many findings requiring extensive context.",
+            "You are an expert at determining optimal AI model selection based on query complexity and research data volume. Choose between BALANCED and DEEP modes based on the following criteria:\n\nBALANCED: For multi-faceted topics with moderate complexity and data volume.\nDEEP: For complex technical topics or when there are many findings requiring extensive context or logic or reasoning.",
         },
         {
           role: "user",
@@ -310,7 +310,8 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const mediaContent: MediaContent[] = [];
 
     // Detect YouTube videos (existing code remains unchanged)
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
 
     for (const match of youtubeMatches) {
@@ -336,16 +337,20 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
 
       // Handle relative URLs
-      if (imgUrl.startsWith('/')) {
+      if (imgUrl.startsWith("/")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-      } else if (!imgUrl.startsWith('http')) {
+      } else if (!imgUrl.startsWith("http")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
       // Skip images with undesired keywords
-      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
+      if (
+        imgUrl.includes("icon") ||
+        imgUrl.includes("logo") ||
+        imgUrl.includes("spacer")
+      ) {
         continue;
       }
 
@@ -359,7 +364,9 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
 
         // Only consider images between 400 and 1500 pixels wide
         if (dimensions.width < 400 || dimensions.width > 1500) {
-          console.debug(`Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`);
+          console.debug(
+            `Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`,
+          );
           continue;
         }
 
@@ -387,7 +394,9 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
 }
 
 // New helper function for getting image dimensions
-async function getImageDimensions(imageUrl: string): Promise<{ width: number; height: number } | null> {
+async function getImageDimensions(
+  imageUrl: string,
+): Promise<{ width: number; height: number } | null> {
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
@@ -396,16 +405,20 @@ async function getImageDimensions(imageUrl: string): Promise<{ width: number; he
     const buffer = Buffer.from(arrayBuffer);
     const dimensions = sizeOf(buffer);
 
-    if (!dimensions || typeof dimensions.width !== 'number' || typeof dimensions.height !== 'number') {
+    if (
+      !dimensions ||
+      typeof dimensions.width !== "number" ||
+      typeof dimensions.height !== "number"
+    ) {
       return null;
     }
 
     return {
       width: dimensions.width,
-      height: dimensions.height
+      height: dimensions.height,
     };
   } catch (error) {
-    console.error('Error getting image dimensions for', imageUrl, error);
+    console.error("Error getting image dimensions for", imageUrl, error);
     return null;
   }
 }
@@ -423,23 +436,24 @@ async function analyzeImageWithVision(imageUrl: string): Promise<{
       messages: [
         {
           role: "system",
-          content: "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
+          content:
+            "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Analyze this image and determine if it's useful for research purposes:"
+              text: "Analyze this image and determine if it's useful for research purposes:",
             },
             {
               type: "image_url",
               image_url: {
-                url: imageUrl
-              }
-            }
+                url: imageUrl,
+              },
+            },
           ],
-        }
+        },
       ],
       response_format: { type: "json_object" },
       max_tokens: 150,
@@ -511,7 +525,7 @@ async function researchQuery(
         {
           role: "system",
           content:
-            "Analyze the research data including any media content. For videos and images, evaluate their relevance and potential value to the research. Include specific references to media content in your findings when appropriate.",
+            "Analyze the following information including any media content. For videos and images, evaluate their relevance and potential value based on the user message. Include specific references to media content in your findings when appropriate.",
         },
         {
           role: "user",
@@ -570,7 +584,7 @@ async function formatReport(
     const modelType = "DEEP"; // Always use MEDIA model for final report
     const model = MODEL_CONFIG[modelType];
 
-    const maxCompletionTokens = modelType === "DEEP" ? 8000 : 4000;
+    const maxCompletionTokens = modelType === "DEEP" ? 12000 : 6000;
 
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
@@ -591,17 +605,17 @@ async function formatReport(
       messages: [
         {
           role: "system",
-          content: `You are creating a comprehensive piece of content that incorporates both textual findings and rich media content. Use markdown formatting and generate a verbose output (at least 3000 tokens if context permits). When referencing media content:
+          content: `You are creating a comprehensive piece of content that incorporates both textual findings and rich media content. Use markdown to expertly craft the content, with markdown formatting for footnotes to sources, with markdown tables and markdown for media where appropriate within your output. Generate a verbose output (at least 3000 tokens if the context permits). When referencing media content:
           - For videos: Include them as embedded content using provided embed codes or as markdown links
           - For images: Include them using markdown image syntax
           - For other media types: Include them as markdown links
           - For sources: use footnotes to reference the source
           - For comparisons: include a markdown table if appropriate for the context
-          Structure the report to flow naturally between text and media elements.`,
+          Structure the content you generate to flow naturally. Adjust your style including voice and tone based on what the user is seeking. Use the findings and media content provided by the user combined with your mastery of content architecture and adaptive writing styles to deliver an incredible work product comprised of the appropriate mix of media images sources videos. Pay attention to the structure requested by the user and try to adhere to it with deviations only to increase your adherence to your guidelines thus far.`,
         },
         {
           role: "user",
-          content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
+          content: `Create a detailed piece of content about "${trimmedQuery}" using the following findings and media content:
             Findings:
             ${trimmedLearnings.join("\n")}
             Available Media Content:
@@ -692,7 +706,7 @@ async function handleResearch(
 
   try {
     console.log(
-      `Starting research in ${research.fastMode ? 'Quick Hunt' : 'Deep Hunt'} mode`,
+      `Starting research in ${research.fastMode ? "Quick Hunt" : "Deep Hunt"} mode`,
     );
 
     // Always use fixed minimal parameters for fast mode
@@ -703,9 +717,11 @@ async function handleResearch(
     // Calculate total steps for progress tracking
     // Quick Hunt: Search (25%) -> Analysis (25%) -> Report Generation (50%)
     // Deep Hunt: Uses breadth * depth for more detailed progress
-    const totalSteps = research.fastMode ? 4 : parameters.breadth * parameters.depth;
+    const totalSteps = research.fastMode
+      ? 4
+      : parameters.breadth * parameters.depth;
     console.log(
-      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? 'Quick Hunt' : 'Deep Hunt'}`,
+      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? "Quick Hunt" : "Deep Hunt"}`,
     );
 
     const autoResearch = { ...research, ...parameters };
@@ -830,4 +846,10 @@ async function handleResearch(
   }
 }
 
-export { generateClarifyingQuestions, handleResearch, detectMediaContent, getImageDimensions, analyzeImageWithVision };
+export {
+  generateClarifyingQuestions,
+  handleResearch,
+  detectMediaContent,
+  getImageDimensions,
+  analyzeImageWithVision,
+};

@@ -214,10 +214,10 @@ export default function HomePage() {
                             <Info className="h-4 w-4" />
                           </TooltipTrigger>
                           <TooltipContent className="bg-popover text-popover-foreground border rounded-md shadow-md p-3">
-                            <p className="max-w-xs">
-                              Quick Hunt: Faster research using balanced analysis.
+                            <p className="max-w-sm">
+                              Quick Hunt: Faster research using balanced analysis (~1 min)
                               <br />
-                              Deep Hunt: Comprehensive research with extensive analysis.
+                              Deep Hunt: Comprehensive research with extensive analysis (~2-10 min)
                             </p>
                           </TooltipContent>
                         </Tooltip>
