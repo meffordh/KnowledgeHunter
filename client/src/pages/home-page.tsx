@@ -200,7 +200,7 @@ export default function HomePage() {
                       aria-label="Toggle Research Speed"
                     />
                     <span className="text-sm text-muted-foreground">
-                      {fastMode ? "Quick Hunt (Balanced)" : "Deep Hunt (Comprehensive)"}
+                      {fastMode ? "Quick Hunter (Balanced)" : "Deep Hunter (Comprehensive)"}
                     </span>
                     <Button
                       variant="ghost"
@@ -215,9 +215,9 @@ export default function HomePage() {
                           </TooltipTrigger>
                           <TooltipContent className="bg-popover text-popover-foreground border rounded-md shadow-md p-3">
                             <p className="max-w-sm">
-                              Quick Hunt: Faster research using balanced analysis (~1 min)
+                              Quick Hunter: Faster research using balanced analysis (~1 min)
                               <br />
-                              Deep Hunt: Comprehensive research with extensive analysis (~2-10 min)
+                              Deep Hunter: Comprehensive research with extensive analysis (~2-10 min)
                             </p>
                           </TooltipContent>
                         </Tooltip>
