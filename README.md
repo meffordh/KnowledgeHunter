@@ -1,45 +1,51 @@
 # KnowledgeHunter
 
-**KnowledgeHunter** is an advanced research and report generation platform that leverages AI and real-time data extraction to deliver comprehensive, high-quality research reports. With dynamic query processing, customizable report templates, and robust real-time progress updates, KnowledgeHunter transforms the way research is performed and shared.
+**KnowledgeHunter** is an advanced research and report generation platform that leverages AI, real-time data extraction, and cutting-edge analysis to deliver comprehensive, high-quality research reports. With dynamic query processing, customizable report templates, and robust real-time progress updates, KnowledgeHunter transforms the way research is performed and shared.
 
 [![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](https://knowledgehunter.io)
 [![Developer](https://img.shields.io/badge/Developer-Hunter_Mefford-blue)](https://www.linkedin.com/in/mefford)
+
+---
 
 ## Overview
 
 KnowledgeHunter automates research workflows by:
 
-- **Dynamically processing queries** and determining the optimal breadth and depth
-- **Extracting web data** using Firecrawl and detecting media content
-- **Analyzing research data** with context-aware AI models
-- **Generating comprehensive reports** in Markdown with customizable sections
-- **Sending real-time progress updates** via WebSockets
+- **Dynamic Query Processing:** Intelligent trimming and parameter determination via AI models.
+- **Iterative Research Loops:** Automatically generates follow-up queries to refine and deepen research.
+- **Multi-Modal Data Extraction:** Uses Firecrawl to search the web, validate YouTube videos, and detect media content.
+- **Vision Model Integration:** Applies a vision model to analyze and validate image content, ensuring only high-quality images are considered.
+- **Adaptive Research Modes:** Choose between **Quick Hunter** (balanced, faster research) and **Deep Hunter** (comprehensive, detailed analysis) modes.
+- **Rich Report Rendering:** Produces final reports in Markdown—including markdown table rendering and rich media embeds.
+- **Real-Time Progress Indicators:** Provides live progress updates over WebSockets so users can follow research in real time.
+- **UI/UX Enhancements:** A refreshed, responsive, and intuitive user interface with improved interactions, error boundaries, and clear status feedback.
 
-The application is built using modern web technologies including React with TypeScript, Express on the backend, PostgreSQL for storage, and integrates third-party services such as OpenAI, Clerk for authentication, and Firecrawl for data extraction.
+---
 
-## Research Flow
+## Updated Research Flow
 
-Below is a diagram that outlines the core research process:
+The updated process now distinguishes between Quick Hunter vs Deep Hunter modes, integrates vision-based image analysis and YouTube video validation, and enriches report rendering with markdown table support. Below is the updated Mermaid flowchart:
+
 
 ```mermaid
 flowchart TD
     A["Start: handleResearch"]
     B["Trim query with trimPrompt (BALANCED)"]
     C["Determine research parameters (Model: BALANCED)"]
-    D["Output: breadth & depth"]
+    D["Output: breadth & depth\n(Quick Hunter vs Deep Hunter)"]
     E["Loop over query iterations"]
-    F["Process query iteration with researchQuery"]
-    G["Search with FirecrawlApp.search"]
-    H["Detect media content (local: detectMediaContent)"]
-    I["Compile and trim context (trimPrompt with MEDIA)"]
-    J["Analyze research data (Model: MEDIA)"]
-    K["Output: findings, URLs, media"]
-    L["Generate followup queries (Model: BALANCED)"]
-    M["Output: followup queries"]
-    N["Accumulate learnings and media"]
-    O["Format report with formatReport (Model: MEDIA)"]
-    P["Final Report in Markdown"]
-    Q["Send progress updates (WebSocket: sendProgress)"]
+    F["Process iteration with researchQuery"]
+    G["Search via FirecrawlApp.search"]
+    H["Detect media content & validate YouTube videos"]
+    I["Vision Model Analysis for Images"]
+    J["Compile & trim context (trimPrompt with MEDIA)"]
+    K["Analyze data with OpenAI (Model: MEDIA)"]
+    L["Render Markdown with Tables & Formatting"]
+    M["Generate follow-up queries (BALANCED)"]
+    N["Accumulate learnings, URLs & Media"]
+    O["Format report (Model: MEDIA)"]
+    P["Final Report in Markdown with Progress Indicators"]
+    Q["Send real-time progress updates (WebSocket)"]
 
     A --> B
     B --> C
@@ -51,17 +57,51 @@ flowchart TD
     H --> I
     I --> J
     J --> K
-    K --> E
-    E -- Optional --> L
-    L --> M
-    M --> E
-    E --> N
+    K --> L
+    L --> N
+    E -- Optional --> M
+    M --> N
     N --> O
     O --> P
     P --> Q
 ```
 
 ## Key Features
+
+### Adaptive Research Modes: Quick Hunter vs Deep Hunter
+- **Quick Hunter:** Uses a fixed minimal set of research parameters for faster, balanced research output.
+- **Deep Hunter:** Dynamically calculates optimal breadth and depth based on query complexity to perform an in-depth investigation.
+
+### Enhanced Media Analysis
+- **Vision Model for Image Analysis:** Integrates a vision model (via OpenAI's latest vision-enabled models) to analyze and validate image content before including it in the report.
+- **YouTube Video Validation:** Verifies YouTube video availability and validity by checking for error markers and parsing the embedded player response.
+
+### Improved Report Rendering & UI/UX
+- **Markdown Table Rendering:** Final reports can now include well-formatted markdown tables to clearly present comparative data.
+- **Progress Indicators:** Real-time progress feedback is provided throughout the research process, helping users monitor the evolving analysis.
+- **UI/UX Improvements:** A refreshed frontend with enhanced styling, intuitive interactions, and robust error boundaries (e.g., in markdown rendering) ensure a seamless user experience.
+
+### Real-Time Updates & Interactivity
+- **Live Progress Updates:** Uses WebSockets to push continuous progress updates (e.g., current query status, percentage complete, and interim findings).
+- **Interactive Query Refinement:** The system generates clarifying questions and follow-up queries, allowing users to refine their research inputs interactively.
+
+### Architecture & Technology Stack
+
+#### Frontend
+- **React & TypeScript:** Modern, type-safe UI built with React.
+- **Tailwind CSS:** Highly customizable and responsive styling.
+- **Framer Motion:** Smooth animations for transitions and UI feedback.
+- **Component Library:** Reusable components for dialogs, forms, notifications, and more.
+
+#### Backend
+- **Express & Node.js:** Robust REST API and WebSocket server.
+- **PostgreSQL & Drizzle ORM:** Structured, type-safe database interactions.
+- **Clerk Authentication:** Secure user authentication and session management.
+- **Firecrawl & OpenAI Integration:** For advanced web crawling, search, and AI-driven analysis.
+
+#### Shared
+- **Zod & Drizzle-Zod:** Schema validation for both client and server.
+- **Common Types:** Shared schemas and types ensure consistency across the codebase.
 
 ### Advanced Research Capabilities
 
