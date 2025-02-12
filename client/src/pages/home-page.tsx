@@ -191,14 +191,14 @@ export default function HomePage() {
                   />
 
                   <div className="flex items-center gap-2 mb-4">
-                    <span className="text-sm">Fast Mode:</span>
+                    <span className="text-sm">Research Speed:</span>
                     <Switch
                       checked={fastMode}
                       onCheckedChange={setFastMode}
-                      aria-label="Toggle Fast Mode"
+                      aria-label="Toggle Research Speed"
                     />
                     <span className="text-sm text-muted-foreground">
-                      {fastMode ? "Fast Mode" : "Let AI Decide"}
+                      {fastMode ? "Quick Hunt" : "Deep Hunt"}
                     </span>
                   </div>
 
