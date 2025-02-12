@@ -1,0 +1,95 @@
+Overview
+ issues have been identified in our codebase:
+
+YouTube Video Embed Validation:
+Our current code in deep-research.ts performs a simple HTTP status check to decide whether to embed a YouTube video. However, since YouTube error pages also return HTTP 200, we need to perform extra validation by inspecting the page content for error markers (for example, the embedded JSON “playabilityStatus” or a simple error message such as “This video is unavailable”). To keep deep-research.ts clean, we will move this logic to its own module.
+
+Modularize YouTube Video Validation
+Requirements
+Create a New Module:
+
+Filename: youtubeVideoValidator.ts
+Exported Function:
+typescript
+Copy
+export async function isYouTubeVideoValid(videoUrl: string): Promise<boolean> { … }
+Functionality:
+Fetch the given video URL.
+Retrieve the response body as text.
+Inspect the text for error markers such as:
+A simple substring check (e.g. "This video is unavailable").
+Extraction and JSON parsing of a string such as ytInitialPlayerResponse—if found, checking that its playabilityStatus.status is not "ERROR".
+Return true only if no error markers are detected.
+Log (but don’t throw) any errors (e.g. network or JSON parsing errors) so that they can be reviewed and, if needed, the video can be skipped.
+Integrate the Validator:
+
+In deep-research.ts, import the helper:
+typescript
+Copy
+import { isYouTubeVideoValid } from './youtubeVideoValidator';
+Before embedding a YouTube video, call isYouTubeVideoValid(videoUrl) asynchronously.
+Only proceed to embed the video (e.g. by calling embedYouTubeVideo(videoUrl)) if the function returns true; otherwise, handle the error gracefully (log the event and display an error or placeholder).
+Testing:
+
+Write unit tests that simulate responses for both available and unavailable videos.
+Verify that network or parsing errors are caught and logged, and that unavailable videos are not embedded.
+Example Implementation:
+typescript
+Copy
+// youtubeVideoValidator.ts
+
+/**
+ * Validates that the provided YouTube video URL corresponds to an available video.
+ * It fetches the URL and inspects the page content for error markers.
+ */
+export async function isYouTubeVideoValid(videoUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(videoUrl);
+    // Note: YouTube returns 200 even for error pages.
+    const text = await response.text();
+
+    // Option A: Simple string search for an error message.
+    if (text.includes("This video is unavailable")) {
+      return false;
+    }
+
+    // Option B: Extract and parse JSON data (if available).
+    const playerResponseMatch = text.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+    if (playerResponseMatch) {
+      try {
+        const playerResponse = JSON.parse(playerResponseMatch[1]);
+        if (
+          playerResponse.playabilityStatus &&
+          playerResponse.playabilityStatus.status === "ERROR"
+        ) {
+          return false;
+        }
+      } catch (jsonError) {
+        console.error("Failed to parse ytInitialPlayerResponse JSON:", jsonError);
+        // Continue, defaulting to valid to avoid false negatives.
+      }
+    }
+
+    return true; // No error markers found.
+  } catch (error) {
+    console.error("Error validating YouTube video:", error);
+    // On network or other errors, return false to avoid embedding a potentially broken video.
+    return false;
+  }
+}
+And in deep-research.ts:
+
+typescript
+Copy
+import { isYouTubeVideoValid } from './youtubeVideoValidator';
+
+async function processYouTubeVideo(videoUrl: string) {
+  const isValid = await isYouTubeVideoValid(videoUrl);
+  if (!isValid) {
+    console.warn(`Skipping embed for invalid video: ${videoUrl}`);
+    // Optionally display an error message or placeholder here.
+    return;
+  }
+  // Proceed with existing embedding logic.
+  embedYouTubeVideo(videoUrl);
+}
