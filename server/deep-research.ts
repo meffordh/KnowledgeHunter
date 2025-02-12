@@ -5,7 +5,6 @@ import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
-import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 import sizeOf from "image-size";
 
 // Initialize API clients using environment variables
@@ -18,6 +17,7 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 }
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
 // Update MODEL_CONFIG to use correct model names and remove redundant models
 const MODEL_CONFIG = {
@@ -26,190 +26,117 @@ const MODEL_CONFIG = {
   MEDIA: "gpt-4o-mini-2024-07-18", // Used for media processing
 } as const;
 
-// Helper function for getting image dimensions
-async function getImageDimensions(
-  imageUrl: string,
-): Promise<{ width: number; height: number } | null> {
+// Fix for encodingForModel type issue
+function trimPrompt(text: string, model: string): string {
   try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const dimensions = sizeOf(buffer);
-
-    if (!dimensions || typeof dimensions.width !== "number" || typeof dimensions.height !== "number") {
-      return null;
+    let maxTokens = 8000; // default
+    // Adjust token limit based on the selected model.
+    switch (model) {
+      case MODEL_CONFIG.DEEP:
+        maxTokens = 128000;
+        break;
+      case MODEL_CONFIG.BALANCED:
+      case MODEL_CONFIG.MEDIA:
+      default:
+        maxTokens = 16000;
+        break;
     }
-
-    return {
-      width: dimensions.width,
-      height: dimensions.height,
-    };
+    // Use cl100k_base for all models as it's the most compatible
+    const enc = encodingForModel("gpt-4");
+    const tokens = enc.encode(text);
+    if (tokens.length <= maxTokens) {
+      return text;
+    }
+    // Chunk text while preserving sentence boundaries.
+    const chunks: string[] = [];
+    let currentChunk = "";
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    for (const sentence of sentences) {
+      const potentialChunk = currentChunk + sentence;
+      const chunkTokens = enc.encode(potentialChunk).length;
+      if (chunkTokens <= maxTokens) {
+        currentChunk = potentialChunk;
+      } else if (currentChunk) {
+        chunks.push(currentChunk);
+        currentChunk = sentence;
+      } else {
+        // If a single sentence is too long, split by words.
+        const words = sentence.split(/\s+/);
+        for (const word of words) {
+          if (enc.encode(currentChunk + word).length <= maxTokens) {
+            currentChunk += (currentChunk ? " " : "") + word;
+          } else if (currentChunk) {
+            chunks.push(currentChunk);
+            currentChunk = word;
+          }
+        }
+      }
+    }
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+    return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
   } catch (error) {
-    console.error("Error getting image dimensions for", imageUrl, error);
-    return null;
+    console.error("Error trimming prompt:", error);
+    return text;
   }
 }
 
-// Add media detection functionality
-interface MediaContent {
-  type: "video" | "image";
-  url: string;
-  title?: string;
-  description?: string;
-  embedCode?: string;
-}
-
-// Analyze a batch of image URLs with the vision model
-async function analyzeImagesWithVision(imageUrls: string[]): Promise<Array<{
-  url: string;
-  isUseful: boolean;
-  title?: string;
-  description?: string;
-}>> {
-  // Filter out invalid URLs
-  const validUrls = imageUrls.filter(url => {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-
-  if (validUrls.length === 0) return [];
-
+// Update determineResearchParameters to use structured outputs
+async function determineResearchParameters(
+  query: string,
+): Promise<{ breadth: number; depth: number }> {
   try {
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
+      model: MODEL_CONFIG.BALANCED,
       messages: [
         {
           role: "system",
-          content: "You are a visual analysis assistant. For each image, determine if it's useful for research and provide a JSON object with: url, isUseful (boolean), title (optional), description (optional). Return a JSON array of such objects."
+          content:
+            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values. Additional depth will allow for more refinement in queries to search recursively based on knowledge gained and more breadth will review more sources for each recursive query level.",
         },
         {
           role: "user",
-          content: `Analyze these images and determine their usefulness for research:\n${JSON.stringify(validUrls)}`
-        }
+          content: `Given this research query: "${trimmedQuery}", determine optimal research settings. Consider:
+1. Query complexity and scope
+2. Need for diverse sources (affects breadth)
+3. Need for detailed exploration (affects depth)
+Respond in JSON format with keys "breadth" and "depth".`,
+        },
       ],
-      response_format: { type: "json_object" }
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "research_parameters",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              breadth: { type: "number" },
+              depth: { type: "number" },
+            },
+            required: ["breadth", "depth"],
+            additionalProperties: false,
+          },
+        },
+      },
     });
-
     const content = response.choices[0]?.message?.content;
-    if (!content) return validUrls.map(url => ({ url, isUseful: false }));
-
-    try {
-      const parsed = JSON.parse(content);
-      const results = Array.isArray(parsed.images) ? parsed.images : 
-                     Array.isArray(parsed) ? parsed :
-                     validUrls.map(url => ({ url, isUseful: false }));
-
-      return results.map(result => ({
-        url: String(result.url || ""),
-        isUseful: Boolean(result.isUseful),
-        title: result.title ? String(result.title) : undefined,
-        description: result.description ? String(result.description) : undefined
-      }));
-    } catch (error) {
-      console.error("Error parsing vision response:", error);
-      return validUrls.map(url => ({ url, isUseful: false }));
+    if (!content || !content.trim().startsWith("{")) {
+      console.log(
+        "Invalid AI response for parameter determination, using defaults",
+      );
+      return { breadth: 4, depth: 2 };
     }
+    const params = JSON.parse(content);
+    return {
+      breadth: Math.min(Math.max(Math.round(params.breadth), 2), 10),
+      depth: Math.min(Math.max(Math.round(params.depth), 1), 5),
+    };
   } catch (error) {
-    console.error("Vision analysis error:", error);
-    return validUrls.map(url => ({ url, isUseful: false }));
-  }
-}
-
-// Update detectMediaContent to use batched image processing
-async function detectMediaContent(url: string): Promise<MediaContent[]> {
-  if (!url) {
-    console.warn("Received empty URL in detectMediaContent");
-    return [];
-  }
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.warn(`Failed to fetch URL: ${url}, status: ${response.status}`);
-      return [];
-    }
-
-    const html = await response.text();
-    const mediaContent: MediaContent[] = [];
-
-    // Extract YouTube videos (unchanged)
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
-
-    for (const match of youtubeMatches) {
-      const videoId = match[1];
-      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-      const isValid = await isYouTubeVideoValid(videoUrl);
-      if (isValid) {
-        mediaContent.push({
-          type: "video",
-          url: videoUrl,
-          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-        });
-      }
-    }
-
-    // Extract and normalize image URLs
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = Array.from(html.matchAll(imgRegex));
-    const imageUrls = imgMatches
-      .map(match => {
-        let imgUrl = match[1];
-        if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return null;
-        if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) return null;
-
-        try {
-          if (imgUrl.startsWith("/")) {
-            const urlObj = new URL(url);
-            imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-          } else if (!imgUrl.startsWith("http")) {
-            const urlObj = new URL(url);
-            imgUrl = new URL(imgUrl, urlObj.href).toString();
-          }
-          return imgUrl;
-        } catch {
-          return null;
-        }
-      })
-      .filter((url): url is string => url !== null);
-
-    if (imageUrls.length === 0) return mediaContent;
-
-    // Analyze all images with vision model
-    console.log(`Processing ${imageUrls.length} images from ${url}`);
-    const visionResults = await analyzeImagesWithVision(imageUrls);
-
-    // Check dimensions only for useful images
-    for (const result of visionResults) {
-      if (!result.isUseful) continue;
-
-      try {
-        const dimensions = await getImageDimensions(result.url);
-        if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
-          mediaContent.push({
-            type: "image",
-            url: result.url,
-            title: result.title,
-            description: result.description,
-          });
-        }
-      } catch (error) {
-        console.error("Error checking dimensions:", error);
-      }
-    }
-
-    return mediaContent;
-  } catch (error) {
-    console.error("Error detecting media content:", error);
-    return [];
+    console.error("Error determining research parameters:", error);
+    return { breadth: 4, depth: 2 };
   }
 }
 
@@ -357,118 +284,189 @@ async function determineModelType(
   }
 }
 
+// Add media detection functionality
+interface MediaContent {
+  type: "video" | "image";
+  url: string;
+  title?: string;
+  description?: string;
+  embedCode?: string;
+}
 
-// Fix for encodingForModel type issue
-function trimPrompt(text: string, model: string): string {
+// Update detectMediaContent function with dimension checking and vision analysis
+async function detectMediaContent(url: string): Promise<MediaContent[]> {
+  if (!url) {
+    console.warn("Received empty URL in detectMediaContent");
+    return [];
+  }
   try {
-    let maxTokens = 8000; // default
-    // Adjust token limit based on the selected model.
-    switch (model) {
-      case MODEL_CONFIG.DEEP:
-        maxTokens = 128000;
-        break;
-      case MODEL_CONFIG.BALANCED:
-      case MODEL_CONFIG.MEDIA:
-      default:
-        maxTokens = 16000;
-        break;
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to fetch URL: ${url}, status: ${response.status}`);
+      return [];
     }
-    // Use cl100k_base for all models as it's the most compatible
-    const enc = encodingForModel("gpt-4");
-    const tokens = enc.encode(text);
-    if (tokens.length <= maxTokens) {
-      return text;
-    }
-    // Chunk text while preserving sentence boundaries.
-    const chunks: string[] = [];
-    let currentChunk = "";
-    const sentences = text.split(/(?<=[.!?])\s+/);
-    for (const sentence of sentences) {
-      const potentialChunk = currentChunk + sentence;
-      const chunkTokens = enc.encode(potentialChunk).length;
-      if (chunkTokens <= maxTokens) {
-        currentChunk = potentialChunk;
-      } else if (currentChunk) {
-        chunks.push(currentChunk);
-        currentChunk = sentence;
-      } else {
-        // If a single sentence is too long, split by words.
-        const words = sentence.split(/\s+/);
-        for (const word of words) {
-          if (enc.encode(currentChunk + word).length <= maxTokens) {
-            currentChunk += (currentChunk ? " " : "") + word;
-          } else if (currentChunk) {
-            chunks.push(currentChunk);
-            currentChunk = word;
-          }
-        }
+
+    const html = await response.text();
+    const mediaContent: MediaContent[] = [];
+
+    // Detect YouTube videos (existing code remains unchanged)
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
+
+    for (const match of youtubeMatches) {
+      const videoId = match[1];
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      const isValid = await isYouTubeVideoValid(videoUrl);
+      if (isValid) {
+        mediaContent.push({
+          type: "video",
+          url: videoUrl,
+          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+        });
       }
     }
-    if (currentChunk) {
-      chunks.push(currentChunk);
+
+    // Enhanced image detection
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = Array.from(html.matchAll(imgRegex));
+
+    for (const match of imgMatches) {
+      let imgUrl = match[1];
+      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Handle relative URLs
+      if (imgUrl.startsWith("/")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+      } else if (!imgUrl.startsWith("http")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
+      }
+
+      // Skip images with undesired keywords
+      if (
+        imgUrl.includes("icon") ||
+        imgUrl.includes("logo") ||
+        imgUrl.includes("spacer")
+      ) {
+        continue;
+      }
+
+      try {
+        // Get image dimensions
+        const dimensions = await getImageDimensions(imgUrl);
+        if (!dimensions) {
+          console.warn(`Could not get dimensions for image: ${imgUrl}`);
+          continue;
+        }
+
+        // Only consider images between 400 and 1500 pixels wide
+        if (dimensions.width < 400 || dimensions.width > 2500) {
+          console.debug(
+            `Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`,
+          );
+          continue;
+        }
+
+        // Use vision model to analyze the image
+        const visionInfo = await analyzeImageWithVision(imgUrl);
+        if (visionInfo.isUseful) {
+          mediaContent.push({
+            type: "image",
+            url: imgUrl,
+            title: visionInfo.title,
+            description: visionInfo.description,
+          });
+        }
+      } catch (error) {
+        console.error("Error processing image:", imgUrl, error);
+        continue;
+      }
     }
-    return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
+
+    return mediaContent;
   } catch (error) {
-    console.error("Error trimming prompt:", error);
-    return text;
+    console.error("Error detecting media content:", error);
+    return [];
   }
 }
 
-// Update determineResearchParameters to use structured outputs
-async function determineResearchParameters(
-  query: string,
-): Promise<{ breadth: number; depth: number }> {
+// New helper function for getting image dimensions
+async function getImageDimensions(
+  imageUrl: string,
+): Promise<{ width: number; height: number } | null> {
   try {
-    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const dimensions = sizeOf(buffer);
+
+    if (
+      !dimensions ||
+      typeof dimensions.width !== "number" ||
+      typeof dimensions.height !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+  } catch (error) {
+    console.error("Error getting image dimensions for", imageUrl, error);
+    return null;
+  }
+}
+
+// New helper function for vision analysis
+async function analyzeImageWithVision(imageUrl: string): Promise<{
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}> {
+  try {
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
+      model: MODEL_CONFIG.MEDIA,
       messages: [
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values. Additional depth will allow for more refinement in queries to search recursively based on knowledge gained and more breadth will review more sources for each recursive query level.",
+            "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}", determine optimal research settings. Consider:
-1. Query complexity and scope
-2. Need for diverse sources (affects breadth)
-3. Need for detailed exploration (affects depth)
-Respond in JSON format with keys "breadth" and "depth".`,
+          content: [
+            {
+              type: "text",
+              text: "Analyze this image and determine if it's useful for research purposes:",
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+              },
+            },
+          ],
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "research_parameters",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              breadth: { type: "number" },
-              depth: { type: "number" },
-            },
-            required: ["breadth", "depth"],
-            additionalProperties: false,
-          },
-        },
-      },
+      response_format: { type: "json_object" },
+      max_tokens: 150,
     });
+
     const content = response.choices[0]?.message?.content;
     if (!content || !content.trim().startsWith("{")) {
-      console.log(
-        "Invalid AI response for parameter determination, using defaults",
-      );
-      return { breadth: 4, depth: 2 };
+      return { isUseful: false };
     }
-    const params = JSON.parse(content);
-    return {
-      breadth: Math.min(Math.max(Math.round(params.breadth), 2), 10),
-      depth: Math.min(Math.max(Math.round(params.depth), 1), 5),
-    };
+    return JSON.parse(content);
   } catch (error) {
-    console.error("Error determining research parameters:", error);
-    return { breadth: 4, depth: 2 };
+    console.error("Vision analysis error for", imageUrl, error);
+    return { isUseful: false };
   }
 }
 
@@ -854,10 +852,5 @@ export {
   handleResearch,
   detectMediaContent,
   getImageDimensions,
-  analyzeImagesWithVision,
-  determineReportStructure,
-  determineModelType,
-  expandQuery,
-  formatReport,
-  researchQuery,
+  analyzeImageWithVision,
 };
