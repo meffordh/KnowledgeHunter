@@ -19,11 +19,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Update MODEL_CONFIG to include specific use cases
+// Update MODEL_CONFIG to use correct model names and remove redundant models
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-11-20",
-  DEEP: "o3-mini-2025-01-31",
-  MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing
+  BALANCED: "gpt-4o-2024-11-20", // Used for both fast and normal mode
+  DEEP: "o3-mini-2025-01-31",    // Used only for detailed analysis in normal mode
+  MEDIA: "gpt-4o-mini-2024-07-18", // Used for media processing
 } as const;
 
 // Fix for encodingForModel type issue
@@ -602,21 +602,15 @@ async function formatReport(
         {
           role: "user",
           content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
-
             Findings:
             ${trimmedLearnings.join("\n")}
-
             Available Media Content:
             ${mediaContext}
-
             Follow this structure:
             ${reportStructure}
-
             Include a comprehensive Sources section with these URLs:
             ${trimmedVisitedUrls.join("\n")}
-
             ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
-
             Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
         },
       ],
@@ -684,7 +678,7 @@ async function expandQuery(query: string): Promise<string[]> {
   }
 }
 
-// Update handleResearch to manage media content
+// Update handleResearch to use BALANCED model for fast mode
 async function handleResearch(
   research: Research,
   ws: WebSocket,
@@ -698,24 +692,24 @@ async function handleResearch(
 
   try {
     console.log(
-      `Starting research with ${research.fastMode ? "Fast Mode enabled" : "normal mode"}`,
+      `Starting research in ${research.fastMode ? 'Quick Hunt' : 'Deep Hunt'} mode`,
     );
 
-    // If fastMode is enabled, use fixed parameters instead of AI determination
+    // Always use fixed minimal parameters for fast mode
     const parameters = research.fastMode
-      ? { breadth: 1, depth: 1 } // Fast mode uses minimal parameters
+      ? { breadth: 1, depth: 1 }
       : await determineResearchParameters(research.query);
+
+    const totalQueries = parameters.breadth * parameters.depth;
+    console.log(
+      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? 'Quick Hunt' : 'Deep Hunt'}`,
+    );
 
     const autoResearch = { ...research, ...parameters };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
     const allMedia: MediaContent[] = [];
     let completedQueries = 0;
-    const totalQueries = autoResearch.breadth * autoResearch.depth;
-
-    console.log(
-      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}`,
-    );
 
     sendProgress({
       status: "IN_PROGRESS",
@@ -737,6 +731,8 @@ async function handleResearch(
       ) {
         const query = currentQueries[i];
         completedQueries++;
+
+        // Send detailed progress update
         sendProgress({
           status: "IN_PROGRESS",
           currentQuery: query,
@@ -746,11 +742,15 @@ async function handleResearch(
           visitedUrls,
           media: allMedia,
         });
+
+        // Research using balanced model for fast mode
         const { findings, urls, media } = await researchQuery(query);
         allLearnings.push(...findings);
-        visitedUrls.push(...urls);
+        visitedUrls.push(...urls.filter(Boolean)); // Filter out undefined URLs
         allMedia.push(...media);
-        if (d < autoResearch.depth - 1) {
+
+        // Only generate follow-up queries in normal mode
+        if (!research.fastMode && d < autoResearch.depth - 1) {
           const followUpQueries = await expandQuery(query);
           newQueries.push(...followUpQueries);
         }
@@ -763,9 +763,10 @@ async function handleResearch(
       learnings: allLearnings,
       urlCount: visitedUrls.length,
       mediaCount: allMedia.length,
-      mode: research.fastMode ? "Fast" : "Normal",
+      mode: research.fastMode ? "Quick Hunt" : "Deep Hunt",
     });
 
+    // Use balanced model for report formatting in fast mode
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,

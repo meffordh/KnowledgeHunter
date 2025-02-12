@@ -20,10 +20,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Search, Copy, Download, ExternalLink } from "lucide-react";
+import { Loader2, Search, Copy, Download, ExternalLink, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
+import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@radix-ui/react-tooltip'
+
 
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
@@ -198,8 +200,29 @@ export default function HomePage() {
                       aria-label="Toggle Research Speed"
                     />
                     <span className="text-sm text-muted-foreground">
-                      {fastMode ? "Quick Hunt" : "Deep Hunt"}
+                      {fastMode ? "Quick Hunt (Balanced)" : "Deep Hunt (Comprehensive)"}
                     </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 ml-1"
+                      asChild
+                    >
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Info className="h-4 w-4" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              Quick Hunt: Faster research using balanced analysis.
+                              <br />
+                              Deep Hunt: Comprehensive research with extensive analysis.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Button>
                   </div>
 
                   <AnimatePresence>
