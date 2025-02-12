@@ -363,7 +363,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         }
 
         // Only consider images between 400 and 1500 pixels wide
-        if (dimensions.width < 400 || dimensions.width > 1500) {
+        if (dimensions.width < 400 || dimensions.width > 2500) {
           console.debug(
             `Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`,
           );
@@ -611,7 +611,7 @@ async function formatReport(
           - For other media types: Include them as markdown links
           - For sources: use footnotes to reference the source
           - For comparisons: include a markdown table if appropriate for the context
-          Structure the content you generate to flow naturally. Adjust your style including voice and tone based on what the user is seeking. Use the findings and media content provided by the user combined with your mastery of content architecture and adaptive writing styles to deliver an incredible work product comprised of the appropriate mix of media images sources videos. Pay attention to the structure requested by the user and try to adhere to it with deviations only to increase your adherence to your guidelines thus far.`,
+          Important Rules to Always Follow. Structure the content you generate to flow naturally. Adjust your style including voice and tone based on what the user is seeking. Use the findings and media content provided by the user combined with your mastery of content architecture and adaptive writing styles to deliver an incredible work product comprised of the appropriate mix of media images sources videos. Pay attention to the structure requested by the user and try to adhere to it with deviations only to increase your adherence to your guidelines thus far.`,
         },
         {
           role: "user",
@@ -625,7 +625,8 @@ async function formatReport(
             Include a comprehensive Sources section with these URLs:
             ${trimmedVisitedUrls.join("\n")}
             ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
-            Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
+            Important: Integrate relevant media content naturally within the report where it adds value to the discussion.
+            Important: Modify the structure including content title, headings, subheadings and section titles to make them flow most naturally within the content as needed and always keep these modifications aligned to what the content is about.`,
         },
       ],
       max_completion_tokens: maxCompletionTokens,
