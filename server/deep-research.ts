@@ -293,12 +293,64 @@ interface MediaContent {
   embedCode?: string;
 }
 
-// Update detectMediaContent function with dimension checking and vision analysis
+interface AnalyzedImage {
+  url: string;
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}
+
+// Add new helper function for batch image analysis
+async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]> {
+  try {
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are a visual analysis assistant. Analyze the array of image URLs provided by the user and determine for each image if it is useful for research purposes. For each image, return a JSON object with the following keys: 'url' (the original URL), 'isUseful' (a boolean), 'title' (a short descriptive title), and 'description' (a brief description). Respond with a JSON array of such objects.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Analyze these images and determine which ones could be useful for research purposes:\n${JSON.stringify(urls)}`,
+            }
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content || !content.trim().startsWith("{")) {
+      console.error("Invalid response from vision analysis");
+      return urls.map(url => ({ url, isUseful: false }));
+    }
+
+    const results = JSON.parse(content);
+    if (!Array.isArray(results.images)) {
+      console.error("Invalid results format from vision analysis");
+      return urls.map(url => ({ url, isUseful: false }));
+    }
+
+    return results.images;
+  } catch (error) {
+    console.error("Error in batch vision analysis:", error);
+    return urls.map(url => ({ url, isUseful: false }));
+  }
+}
+
+
+// Update detectMediaContent to use batch processing
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   if (!url) {
     console.warn("Received empty URL in detectMediaContent");
     return [];
   }
+
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -309,9 +361,8 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // Detect YouTube videos (existing code remains unchanged)
-    const youtubeRegex =
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    // Process YouTube videos (existing code remains unchanged)
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
 
     for (const match of youtubeMatches) {
@@ -328,13 +379,20 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Enhanced image detection
+    // Enhanced batch image detection
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
     const imgMatches = Array.from(html.matchAll(imgRegex));
+    const imageUrls: string[] = [];
 
+    // Collect and normalize image URLs
     for (const match of imgMatches) {
       let imgUrl = match[1];
       if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Skip images with undesired keywords
+      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
+        continue;
+      }
 
       // Handle relative URLs
       if (imgUrl.startsWith("/")) {
@@ -345,44 +403,30 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
-      // Skip images with undesired keywords
-      if (
-        imgUrl.includes("icon") ||
-        imgUrl.includes("logo") ||
-        imgUrl.includes("spacer")
-      ) {
-        continue;
-      }
+      imageUrls.push(imgUrl);
+    }
 
-      try {
-        // Get image dimensions
-        const dimensions = await getImageDimensions(imgUrl);
-        if (!dimensions) {
-          console.warn(`Could not get dimensions for image: ${imgUrl}`);
-          continue;
-        }
+    // Batch analyze images with vision model
+    if (imageUrls.length > 0) {
+      const analyzedImages = await analyzeImagesWithVision(imageUrls);
 
-        // Only consider images between 400 and 1500 pixels wide
-        if (dimensions.width < 400 || dimensions.width > 2500) {
-          console.debug(
-            `Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`,
-          );
-          continue;
+      // Only check dimensions for useful images
+      for (const image of analyzedImages) {
+        if (image.isUseful) {
+          try {
+            const dimensions = await getImageDimensions(image.url);
+            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+              mediaContent.push({
+                type: "image",
+                url: image.url,
+                title: image.title,
+                description: image.description,
+              });
+            }
+          } catch (error) {
+            console.error("Error processing image dimensions:", image.url, error);
+          }
         }
-
-        // Use vision model to analyze the image
-        const visionInfo = await analyzeImageWithVision(imgUrl);
-        if (visionInfo.isUseful) {
-          mediaContent.push({
-            type: "image",
-            url: imgUrl,
-            title: visionInfo.title,
-            description: visionInfo.description,
-          });
-        }
-      } catch (error) {
-        console.error("Error processing image:", imgUrl, error);
-        continue;
       }
     }
 
@@ -490,7 +534,11 @@ async function researchQuery(
       };
     }
 
-    const urls = searchResults.data.map((result) => result.url);
+    // Filter out undefined URLs and ensure string type
+    const urls = searchResults.data
+      .map((result) => result.url)
+      .filter((url): url is string => typeof url === 'string');
+
     const mediaPromises = urls.map((url) => detectMediaContent(url));
     const mediaResults = await Promise.all(mediaPromises);
     const allMedia = mediaResults.flat();
@@ -853,4 +901,5 @@ export {
   detectMediaContent,
   getImageDimensions,
   analyzeImageWithVision,
+  analyzeImagesWithVision,
 };
