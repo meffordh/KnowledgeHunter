@@ -700,7 +700,10 @@ async function handleResearch(
       ? { breadth: 1, depth: 1 }
       : await determineResearchParameters(research.query);
 
-    const totalQueries = parameters.breadth * parameters.depth;
+    // Calculate total steps for progress tracking
+    // Quick Hunt: Search (25%) -> Analysis (25%) -> Report Generation (50%)
+    // Deep Hunt: Uses breadth * depth for more detailed progress
+    const totalSteps = research.fastMode ? 4 : parameters.breadth * parameters.depth;
     console.log(
       `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? 'Quick Hunt' : 'Deep Hunt'}`,
     );
@@ -709,14 +712,15 @@ async function handleResearch(
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
     const allMedia: MediaContent[] = [];
-    let completedQueries = 0;
+    let currentStep = 0;
 
+    // Initial progress update
     sendProgress({
       status: "IN_PROGRESS",
       currentQuery: autoResearch.query,
       learnings: [],
-      progress: 0,
-      totalProgress: totalQueries,
+      progress: currentStep,
+      totalProgress: totalSteps,
       visitedUrls: [],
       media: [],
     });
@@ -730,23 +734,29 @@ async function handleResearch(
         i++
       ) {
         const query = currentQueries[i];
-        completedQueries++;
 
-        // Send detailed progress update
+        // Update progress before starting search
+        currentStep++;
         sendProgress({
           status: "IN_PROGRESS",
           currentQuery: query,
           learnings: allLearnings,
-          progress: completedQueries,
-          totalProgress: totalQueries,
+          progress: currentStep,
+          totalProgress: totalSteps,
           visitedUrls,
           media: allMedia,
         });
 
         // Research using balanced model for fast mode
         const { findings, urls, media } = await researchQuery(query);
+
+        // In Quick Hunt mode, update progress after analysis
+        if (research.fastMode) {
+          currentStep++;
+        }
+
         allLearnings.push(...findings);
-        visitedUrls.push(...urls.filter(Boolean)); // Filter out undefined URLs
+        visitedUrls.push(...urls.filter(Boolean));
         allMedia.push(...media);
 
         // Only generate follow-up queries in normal mode
@@ -756,6 +766,20 @@ async function handleResearch(
         }
       }
       currentQueries = newQueries;
+    }
+
+    // Update progress before report generation
+    if (research.fastMode) {
+      currentStep++;
+      sendProgress({
+        status: "IN_PROGRESS",
+        currentQuery: "Generating final report...",
+        learnings: allLearnings,
+        progress: currentStep,
+        totalProgress: totalSteps,
+        visitedUrls,
+        media: allMedia,
+      });
     }
 
     console.log("Generating final report with:", {
@@ -779,11 +803,13 @@ async function handleResearch(
       await onComplete(formattedReport, visitedUrls);
     }
 
+    // Final progress update
+    currentStep = totalSteps;
     sendProgress({
       status: "COMPLETED",
       learnings: allLearnings,
-      progress: totalQueries,
-      totalProgress: totalQueries,
+      progress: currentStep,
+      totalProgress: totalSteps,
       report: formattedReport,
       visitedUrls,
       media: allMedia,
