@@ -294,6 +294,52 @@ interface MediaContent {
 }
 
 // Update detectMediaContent function with dimension checking and vision analysis
+async function analyzeImagesWithVision(imageUrls: string[]): Promise<Array<{
+  url: string;
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}>> {
+  try {
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a visual analysis assistant. Analyze the array of image URLs provided and determine for each image if it is useful for research purposes. For each image, return a JSON object with: 'url' (the original URL), 'isUseful' (boolean), 'title' (short descriptive title), and 'description' (brief description). Return a JSON array of such objects.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Analyze these images and determine which ones could be useful for research purposes:",
+            },
+            ...imageUrls.map(url => ({
+              type: "image_url",
+              image_url: { url }
+            }))
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content || !content.trim().startsWith("{")) {
+      return imageUrls.map(url => ({ url, isUseful: false }));
+    }
+    const results = JSON.parse(content);
+    return Array.isArray(results.images) ? results.images : imageUrls.map(url => ({ url, isUseful: false }));
+  } catch (error) {
+    console.error("Vision batch analysis error:", error);
+    return imageUrls.map(url => ({ url, isUseful: false }));
+  }
+}
+
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   if (!url) {
     console.warn("Received empty URL in detectMediaContent");
@@ -309,7 +355,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // Detect YouTube videos (existing code remains unchanged)
+    // YouTube video detection remains unchanged
     const youtubeRegex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
@@ -328,13 +374,20 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Enhanced image detection
+    // Batch process images
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
     const imgMatches = Array.from(html.matchAll(imgRegex));
+    const imageUrls: string[] = [];
 
+    // Collect and normalize image URLs
     for (const match of imgMatches) {
       let imgUrl = match[1];
       if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Skip unwanted images
+      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
+        continue;
+      }
 
       // Handle relative URLs
       if (imgUrl.startsWith("/")) {
@@ -345,44 +398,31 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
-      // Skip images with undesired keywords
-      if (
-        imgUrl.includes("icon") ||
-        imgUrl.includes("logo") ||
-        imgUrl.includes("spacer")
-      ) {
-        continue;
-      }
+      imageUrls.push(imgUrl);
+    }
 
-      try {
-        // Get image dimensions
-        const dimensions = await getImageDimensions(imgUrl);
-        if (!dimensions) {
-          console.warn(`Could not get dimensions for image: ${imgUrl}`);
+    if (imageUrls.length > 0) {
+      // First, analyze all images with vision model
+      const visionResults = await analyzeImagesWithVision(imageUrls);
+
+      // Then check dimensions only for useful images
+      for (const result of visionResults) {
+        if (!result.isUseful) continue;
+
+        try {
+          const dimensions = await getImageDimensions(result.url);
+          if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+            mediaContent.push({
+              type: "image",
+              url: result.url,
+              title: result.title,
+              description: result.description,
+            });
+          }
+        } catch (error) {
+          console.error("Error processing image dimensions:", error);
           continue;
         }
-
-        // Only consider images between 400 and 1500 pixels wide
-        if (dimensions.width < 400 || dimensions.width > 2500) {
-          console.debug(
-            `Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`,
-          );
-          continue;
-        }
-
-        // Use vision model to analyze the image
-        const visionInfo = await analyzeImageWithVision(imgUrl);
-        if (visionInfo.isUseful) {
-          mediaContent.push({
-            type: "image",
-            url: imgUrl,
-            title: visionInfo.title,
-            description: visionInfo.description,
-          });
-        }
-      } catch (error) {
-        console.error("Error processing image:", imgUrl, error);
-        continue;
       }
     }
 
@@ -422,6 +462,7 @@ async function getImageDimensions(
     return null;
   }
 }
+
 
 // New helper function for vision analysis
 async function analyzeImageWithVision(imageUrl: string): Promise<{
@@ -853,4 +894,5 @@ export {
   detectMediaContent,
   getImageDimensions,
   analyzeImageWithVision,
+  analyzeImagesWithVision,
 };
