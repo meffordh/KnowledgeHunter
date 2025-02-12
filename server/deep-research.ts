@@ -4,7 +4,7 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
-import { isYouTubeVideoValid } from './youtubeVideoValidator';
+import { isYouTubeVideoValid } from "./youtubeVideoValidator";
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -20,7 +20,7 @@ const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
 // Update MODEL_CONFIG to include specific use cases
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-08-06",
+  BALANCED: "gpt-4o-2024-11-20",
   DEEP: "o3-mini-2025-01-31",
   MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing
 } as const;
@@ -529,10 +529,10 @@ async function formatReport(
         const videoUrlPatterns = [
           new RegExp(`\\[.*?\\]\\(${m.url}\\)`, "g"), // Markdown link format
           new RegExp(m.url, "g"), // Plain URL
-          new RegExp(m.url.replace("watch?v=", "embed/"), "g") // Embed URL format
+          new RegExp(m.url.replace("watch?v=", "embed/"), "g"), // Embed URL format
         ];
 
-        videoUrlPatterns.forEach(pattern => {
+        videoUrlPatterns.forEach((pattern) => {
           report = report.replace(pattern, "\n\n" + m.embedCode + "\n\n");
         });
       }
@@ -541,7 +541,7 @@ async function formatReport(
     // Clean up any remaining plain YouTube URLs by converting them to markdown links
     report = report.replace(
       /https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/g,
-      "[$&]($&)"
+      "[$&]($&)",
     );
 
     return report;
@@ -593,11 +593,13 @@ async function handleResearch(
   };
 
   try {
-    console.log(`Starting research with ${research.fastMode ? 'Fast Mode enabled' : 'normal mode'}`);
+    console.log(
+      `Starting research with ${research.fastMode ? "Fast Mode enabled" : "normal mode"}`,
+    );
 
     // If fastMode is enabled, use fixed parameters instead of AI determination
     const parameters = research.fastMode
-      ? { breadth: 1, depth: 1 }  // Fast mode uses minimal parameters
+      ? { breadth: 1, depth: 1 } // Fast mode uses minimal parameters
       : await determineResearchParameters(research.query);
 
     const autoResearch = { ...research, ...parameters };
@@ -607,7 +609,9 @@ async function handleResearch(
     let completedQueries = 0;
     const totalQueries = autoResearch.breadth * autoResearch.depth;
 
-    console.log(`Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}`);
+    console.log(
+      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}`,
+    );
 
     sendProgress({
       status: "IN_PROGRESS",
@@ -655,7 +659,7 @@ async function handleResearch(
       learnings: allLearnings,
       urlCount: visitedUrls.length,
       mediaCount: allMedia.length,
-      mode: research.fastMode ? 'Fast' : 'Normal'
+      mode: research.fastMode ? "Fast" : "Normal",
     });
 
     const formattedReport = await formatReport(
