@@ -18,11 +18,11 @@ if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Update MODEL_CONFIG to use specific model for media-rich content
+// Update MODEL_CONFIG to include specific use cases
 const MODEL_CONFIG = {
   BALANCED: "gpt-4o-2024-08-06",
   DEEP: "o3-mini-2025-01-31",
-  MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing due to its cost-efficient capabilities
+  MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing
 } as const;
 
 // Fix for encodingForModel type issue
@@ -81,8 +81,7 @@ function trimPrompt(text: string, model: string): string {
   }
 }
 
-// Determine research parameters using a structured JSON schema response.
-// We now use only the BALANCED model for parameter determination.
+// Update determineResearchParameters to use structured outputs
 async function determineResearchParameters(
   query: string,
 ): Promise<{ breadth: number; depth: number }> {
@@ -105,7 +104,6 @@ async function determineResearchParameters(
 Respond in JSON format with keys "breadth" and "depth".`,
         },
       ],
-      // Use structured outputs via json_schema for guaranteed schema adherence.
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -500,7 +498,7 @@ async function formatReport(
         {
           role: "user",
           content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
-
+            
 Findings:
 ${trimmedLearnings.join("\n")}
 

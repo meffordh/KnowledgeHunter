@@ -43,7 +43,6 @@ export default function HomePage() {
     if (!showQuestions) {
       try {
         setIsGeneratingQuestions(true);
-        console.log("Requesting clarifying questions for query:", data.query);
         const response = await fetch("/api/clarify", {
           method: "POST",
           headers: {
@@ -58,8 +57,6 @@ export default function HomePage() {
         }
 
         const responseData = await response.json();
-        console.log("Received questions:", responseData.questions);
-
         if (
           !Array.isArray(responseData.questions) ||
           responseData.questions.length === 0
