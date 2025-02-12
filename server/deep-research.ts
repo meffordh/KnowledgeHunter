@@ -499,21 +499,21 @@ async function formatReport(
           role: "user",
           content: `Create a detailed research report about "${trimmedQuery}" using these findings and media content:
             
-Findings:
-${trimmedLearnings.join("\n")}
-
-Available Media Content:
-${mediaContext}
-
-Follow this structure:
-${reportStructure}
-
-Include a comprehensive Sources section with these URLs:
-${trimmedVisitedUrls.join("\n")}
-
-${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
-
-Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
+            Findings:
+            ${trimmedLearnings.join("\n")}
+            
+            Available Media Content:
+            ${mediaContext}
+            
+            Follow this structure:
+            ${reportStructure}
+            
+            Include a comprehensive Sources section with these URLs:
+            ${trimmedVisitedUrls.join("\n")}
+            
+            ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
+            
+            Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
         },
       ],
       max_completion_tokens: maxCompletionTokens,
@@ -593,15 +593,21 @@ async function handleResearch(
   };
 
   try {
-    const { breadth, depth } = await determineResearchParameters(
-      research.query,
-    );
-    const autoResearch = { ...research, breadth, depth };
+    console.log(`Starting research with ${research.fastMode ? 'Fast Mode enabled' : 'normal mode'}`);
+
+    // If fastMode is enabled, use fixed parameters instead of AI determination
+    const parameters = research.fastMode
+      ? { breadth: 1, depth: 1 }  // Fast mode uses minimal parameters
+      : await determineResearchParameters(research.query);
+
+    const autoResearch = { ...research, ...parameters };
     const allLearnings: string[] = [];
     const visitedUrls: string[] = [];
     const allMedia: MediaContent[] = [];
     let completedQueries = 0;
     const totalQueries = autoResearch.breadth * autoResearch.depth;
+
+    console.log(`Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}`);
 
     sendProgress({
       status: "IN_PROGRESS",
@@ -612,6 +618,7 @@ async function handleResearch(
       visitedUrls: [],
       media: [],
     });
+
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
       const newQueries: string[] = [];
@@ -642,22 +649,27 @@ async function handleResearch(
       }
       currentQueries = newQueries;
     }
+
     console.log("Generating final report with:", {
       queryCount: allLearnings.length,
       learnings: allLearnings,
       urlCount: visitedUrls.length,
       mediaCount: allMedia.length,
+      mode: research.fastMode ? 'Fast' : 'Normal'
     });
+
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
       visitedUrls,
       allMedia,
     );
+
     if (onComplete) {
       console.log("Calling onComplete callback with report and URLs");
       await onComplete(formattedReport, visitedUrls);
     }
+
     sendProgress({
       status: "COMPLETED",
       learnings: allLearnings,
@@ -665,7 +677,7 @@ async function handleResearch(
       totalProgress: totalQueries,
       report: formattedReport,
       visitedUrls,
-      media: allMedia, // Include media in the final progress update
+      media: allMedia,
     });
   } catch (error) {
     console.error("Error in handleResearch:", error);
@@ -678,7 +690,7 @@ async function handleResearch(
       totalProgress: 1,
       error: errorMessage,
       visitedUrls: [],
-      media: [], // Include empty media array in error state
+      media: [],
     });
   }
 }

@@ -18,6 +18,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, Search, Copy, Download, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -26,6 +28,7 @@ import { SafeMarkdown } from "@/components/ui/safe-markdown";
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
   const { toast } = useToast();
+  const [fastMode, setFastMode] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<
     Record<string, string>
   >({});
@@ -88,9 +91,11 @@ export default function HomePage() {
         setIsGeneratingQuestions(false);
       }
     } else {
+      // Include fastMode in the research request
       startResearch({
         ...data,
         clarifications: clarifyingQuestions,
+        fastMode,
       });
       setShowQuestions(false);
       setClarifyingQuestions({});
@@ -173,16 +178,29 @@ export default function HomePage() {
                           What Would You Like to Research?
                         </FormLabel>
                         <FormControl>
-                          <Input
+                          <Textarea
                             placeholder="Enter your research topic..."
                             {...field}
-                            className="h-14 text-lg mt-2 transition-all duration-200 focus:scale-[1.01]"
+                            rows={3}
+                            className="mt-2 text-lg transition-all duration-200 focus:scale-[1.01]"
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-sm">Fast Mode:</span>
+                    <Switch
+                      checked={fastMode}
+                      onCheckedChange={setFastMode}
+                      aria-label="Toggle Fast Mode"
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {fastMode ? "Fast Mode" : "Let AI Decide"}
+                    </span>
+                  </div>
 
                   <AnimatePresence>
                     {isGeneratingQuestions && (

@@ -117,6 +117,7 @@ export type Metadata = z.infer<typeof metadataSchema>;
 export const researchSchema = z.object({
   query: z.string().min(1, "Query is required"),
   clarifications: z.record(z.string(), z.string()).optional(),
+  fastMode: z.boolean().optional().default(false),
 });
 
 // Update researchProgressSchema to include media content
