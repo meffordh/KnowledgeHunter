@@ -5,7 +5,166 @@ import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
+import type { ChatCompletionContentPart } from "openai/resources/chat/completions";
 import sizeOf from "image-size";
+
+// Helper function for getting image dimensions
+async function getImageDimensions(
+  imageUrl: string,
+): Promise<{ width: number; height: number } | null> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const dimensions = sizeOf(buffer);
+
+    if (
+      !dimensions ||
+      typeof dimensions.width !== "number" ||
+      typeof dimensions.height !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+  } catch (error) {
+    console.error("Error getting image dimensions for", imageUrl, error);
+    return null;
+  }
+}
+
+// New helper function to pre-analyze HTML content
+async function analyzeHtmlForRelevantImages(html: string, query: string): Promise<string[]> {
+  try {
+    // Extract all image URLs from HTML
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = Array.from(html.matchAll(imgRegex));
+    const allImageUrls = imgMatches.map(match => match[1]).filter(Boolean);
+
+    if (allImageUrls.length === 0) {
+      return [];
+    }
+
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are an assistant that analyzes HTML content to identify relevant image URLs for research. Return a JSON object with an 'urls' array containing only the most relevant image URLs based on the surrounding content and research query."
+        },
+        {
+          role: "user",
+          content: `Given this research query: "${query}", analyze these image URLs and their context to determine which ones are most likely to be relevant. Only return URLs that appear to be content-relevant (not ads, icons, or decorative elements).\n\nImage URLs:\n${JSON.stringify(allImageUrls, null, 2)}`
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.warn("No content returned from HTML analysis");
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed.urls) ? parsed.urls : [];
+    } catch (error) {
+      console.error("Error parsing HTML analysis response:", error);
+      return [];
+    }
+  } catch (error) {
+    console.error("Error analyzing HTML for relevant images:", error);
+    return [];
+  }
+}
+
+// Update analyzeImagesWithVision function with proper types
+async function analyzeImagesWithVision(imageUrls: string[]): Promise<Array<{
+  url: string;
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}>> {
+  try {
+    // Validate URLs before processing
+    const validUrls = imageUrls.filter(url => {
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        console.warn("Skipping invalid URL:", url);
+        return false;
+      }
+    });
+
+    if (validUrls.length === 0) {
+      return [];
+    }
+
+    // Create properly typed content parts for the vision model
+    const contentParts: ChatCompletionContentPart[] = [
+      { type: "text", text: "Analyze these images and determine their research value:" }
+    ];
+
+    // Add image URLs as content parts
+    validUrls.forEach(url => {
+      contentParts.push({
+        type: "image_url",
+        image_url: { url, detail: "low" }
+      } as ChatCompletionContentPart);
+    });
+
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are a visual analysis assistant. Analyze the images provided and determine for each one if it is useful for research purposes. Return a JSON array with objects containing: url, isUseful (boolean), title (optional), and description (optional)."
+        },
+        {
+          role: "user",
+          content: contentParts
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.warn("No content returned from vision analysis");
+      return validUrls.map(url => ({ url, isUseful: false }));
+    }
+
+    try {
+      const parsed = JSON.parse(content);
+      const results = Array.isArray(parsed.images) ? parsed.images : 
+                     Array.isArray(parsed) ? parsed :
+                     validUrls.map(url => ({ url, isUseful: false }));
+
+      // Ensure each result has the required properties and proper types
+      return results.map(result => ({
+        url: String(result.url),
+        isUseful: Boolean(result.isUseful),
+        title: result.title ? String(result.title) : undefined,
+        description: result.description ? String(result.description) : undefined
+      }));
+    } catch (error) {
+      console.error("Error parsing vision analysis response:", error);
+      return validUrls.map(url => ({ url, isUseful: false }));
+    }
+  } catch (error) {
+    console.error("Vision batch analysis error:", error);
+    return imageUrls.map(url => ({ url, isUseful: false }));
+  }
+}
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -293,65 +452,8 @@ interface MediaContent {
   embedCode?: string;
 }
 
-// Update detectMediaContent function with dimension checking and vision analysis
-async function analyzeImagesWithVision(imageUrls: string[]): Promise<Array<{
-  url: string;
-  isUseful: boolean;
-  title?: string;
-  description?: string;
-}>> {
-  try {
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content: "You are a visual analysis assistant. Analyze the array of image URLs provided and determine for each image if it is useful for research purposes. For each image, return a JSON object with: 'url' (the original URL), 'isUseful' (boolean), 'title' (short descriptive title), and 'description' (brief description)."
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Analyze these images and determine which ones could be useful for research purposes:" },
-            ...imageUrls.map(url => ({
-              type: "image_url",
-              image_url: {
-                url: url,
-                detail: "low"
-              }
-            }))
-          ]
-        }
-      ],
-      response_format: { type: "json_object" }
-    });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.warn("No content returned from vision analysis");
-      return imageUrls.map(url => ({ url, isUseful: false }));
-    }
-
-    try {
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed.images)) {
-        return parsed.images;
-      } else if (Array.isArray(parsed)) {
-        return parsed;
-      } else {
-        console.warn("Unexpected response format from vision analysis:", parsed);
-        return imageUrls.map(url => ({ url, isUseful: false }));
-      }
-    } catch (parseError) {
-      console.error("Error parsing vision analysis response:", parseError);
-      return imageUrls.map(url => ({ url, isUseful: false }));
-    }
-  } catch (error) {
-    console.error("Vision batch analysis error:", error);
-    return imageUrls.map(url => ({ url, isUseful: false }));
-  }
-}
-
+// Update detectMediaContent to use the new functions
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   if (!url) {
     console.warn("Received empty URL in detectMediaContent");
@@ -368,7 +470,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
-    // YouTube video detection remains unchanged
+    // YouTube video detection
     const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
 
@@ -386,47 +488,18 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Batch process images
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = Array.from(html.matchAll(imgRegex));
-    const imageUrls: string[] = [];
+    // First, analyze HTML to identify relevant image URLs
+    console.log("Analyzing HTML content for relevant images...");
+    const relevantImageUrls = await analyzeHtmlForRelevantImages(html, url);
+    console.log(`Found ${relevantImageUrls.length} potentially relevant images`);
 
-    // Extract and normalize image URLs
-    for (const match of imgMatches) {
-      let imgUrl = match[1];
-
-      // Basic URL validation
-      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
-
-      // Skip unwanted images
-      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
-        continue;
-      }
-
-      // Handle relative URLs
-      try {
-        if (imgUrl.startsWith("/")) {
-          const urlObj = new URL(url);
-          imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-        } else if (!imgUrl.startsWith("http")) {
-          const urlObj = new URL(url);
-          imgUrl = new URL(imgUrl, urlObj.href).toString();
-        }
-        imageUrls.push(imgUrl);
-      } catch (error) {
-        console.warn("Error normalizing image URL:", error);
-        continue;
-      }
-    }
-
-    if (imageUrls.length > 0) {
-      console.log(`Processing ${imageUrls.length} images from ${url}`);
-
-      // First, analyze all images with vision model
-      const visionResults = await analyzeImagesWithVision(imageUrls);
+    if (relevantImageUrls.length > 0) {
+      // Then analyze the relevant images with vision model
+      console.log("Analyzing images with vision model...");
+      const visionResults = await analyzeImagesWithVision(relevantImageUrls);
       console.log(`Received vision analysis for ${visionResults.length} images`);
 
-      // Then check dimensions only for useful images
+      // Process useful images and check dimensions
       for (const result of visionResults) {
         if (!result.isUseful) {
           console.debug(`Skipping non-useful image: ${result.url}`);
@@ -457,84 +530,6 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
   } catch (error) {
     console.error("Error detecting media content:", error);
     return [];
-  }
-}
-
-// New helper function for getting image dimensions
-async function getImageDimensions(
-  imageUrl: string,
-): Promise<{ width: number; height: number } | null> {
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const dimensions = sizeOf(buffer);
-
-    if (
-      !dimensions ||
-      typeof dimensions.width !== "number" ||
-      typeof dimensions.height !== "number"
-    ) {
-      return null;
-    }
-
-    return {
-      width: dimensions.width,
-      height: dimensions.height,
-    };
-  } catch (error) {
-    console.error("Error getting image dimensions for", imageUrl, error);
-    return null;
-  }
-}
-
-
-// New helper function for vision analysis
-async function analyzeImageWithVision(imageUrl: string): Promise<{
-  isUseful: boolean;
-  title?: string;
-  description?: string;
-}> {
-  try {
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Analyze this image and determine if it's useful for research purposes:",
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageUrl,
-              },
-            },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 150,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) {
-      return { isUseful: false };
-    }
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("Vision analysis error for", imageUrl, error);
-    return { isUseful: false };
   }
 }
 
@@ -922,4 +917,5 @@ export {
   getImageDimensions,
   analyzeImageWithVision,
   analyzeImagesWithVision,
+  analyzeHtmlForRelevantImages
 };
