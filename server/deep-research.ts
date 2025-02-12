@@ -4,6 +4,7 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
+import { isYouTubeVideoValid } from './youtubeVideoValidator';
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -306,19 +307,29 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     // Detect YouTube videos
     const youtubeRegex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-    const youtubeMatches = html.matchAll(youtubeRegex);
+    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
+
+    // Process each YouTube video match
     for (const match of youtubeMatches) {
       const videoId = match[1];
-      mediaContent.push({
-        type: "video",
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-      });
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      // Validate the video before adding it
+      const isValid = await isYouTubeVideoValid(videoUrl);
+      if (isValid) {
+        mediaContent.push({
+          type: "video",
+          url: videoUrl,
+          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+        });
+      } else {
+        console.warn(`Skipping invalid YouTube video: ${videoUrl}`);
+      }
     }
 
-    // Detect images (excluding tiny icons, spacers, etc.)
+    // Detect images (keeping existing image detection logic)
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = html.matchAll(imgRegex);
+    const imgMatches = Array.from(html.matchAll(imgRegex));
     for (const match of imgMatches) {
       const imgUrl = match[1];
       if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
