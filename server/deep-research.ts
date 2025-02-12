@@ -25,9 +25,7 @@ const MODEL_CONFIG = {
   MEDIA: "gpt-4o-mini-2024-07-18", // Using gpt-4o-mini for media processing due to its cost-efficient capabilities
 } as const;
 
-// Utility: trimPrompt
-// This function trims input text only if its token count exceeds the allowed limit.
-// It splits the text into chunks along sentence boundaries.
+// Fix for encodingForModel type issue
 function trimPrompt(text: string, model: string): string {
   try {
     let maxTokens = 8000; // default
@@ -42,8 +40,8 @@ function trimPrompt(text: string, model: string): string {
         maxTokens = 16000;
         break;
     }
-    // Use a slightly different encoder for DEEP mode if needed.
-    const enc = encodingForModel(model === MODEL_CONFIG.DEEP ? "gpt-4" : model);
+    // Use cl100k_base for all models as it's the most compatible
+    const enc = encodingForModel("gpt-4");
     const tokens = enc.encode(text);
     if (tokens.length <= maxTokens) {
       return text;
@@ -76,8 +74,6 @@ function trimPrompt(text: string, model: string): string {
     if (currentChunk) {
       chunks.push(currentChunk);
     }
-    // Instead of returning only the first chunk, consider concatenating multiple chunks if needed.
-    // Here we simply return the first chunk.
     return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
   } catch (error) {
     console.error("Error trimming prompt:", error);
@@ -298,7 +294,12 @@ interface MediaContent {
   embedCode?: string;
 }
 
+// Fix for undefined URL issue in detectMediaContent
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
+  if (!url) {
+    console.warn("Received empty URL in detectMediaContent");
+    return [];
+  }
   try {
     const response = await fetch(url);
     const html = await response.text();
@@ -327,13 +328,12 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Detect images (keeping existing image detection logic)
+    // Fix for undefined matches in image detection
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
     const imgMatches = Array.from(html.matchAll(imgRegex));
     for (const match of imgMatches) {
       const imgUrl = match[1];
-      if (imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        // Basic size detection from HTML attributes or URL pattern
+      if (imgUrl && imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
         if (
           !imgUrl.includes("icon") &&
           !imgUrl.includes("logo") &&
@@ -468,6 +468,8 @@ async function formatReport(
     const modelType = "DEEP"; // Always use MEDIA model for final report
     const model = MODEL_CONFIG[modelType];
 
+    const maxCompletionTokens = modelType === "DEEP" ? 8000 : 4000;
+
     const trimmedQuery = trimPrompt(query, model);
     const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
     const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
@@ -516,7 +518,7 @@ ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanati
 Important: Integrate relevant media content naturally within the report where it adds value to the discussion.`,
         },
       ],
-      max_completion_tokens: model === MODEL_CONFIG.MEDIA ? 8000 : 4000,
+      max_completion_tokens: maxCompletionTokens,
     });
 
     let report =
