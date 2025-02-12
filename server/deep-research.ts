@@ -301,6 +301,11 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
   }
   try {
     const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to fetch URL: ${url}, status: ${response.status}`);
+      return [];
+    }
+
     const html = await response.text();
     const mediaContent: MediaContent[] = [];
 
@@ -322,13 +327,22 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Enhanced image detection with dimension checking and vision analysis
+    // Enhanced image detection
     const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
     const imgMatches = Array.from(html.matchAll(imgRegex));
 
     for (const match of imgMatches) {
-      const imgUrl = match[1];
+      let imgUrl = match[1];
       if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Handle relative URLs
+      if (imgUrl.startsWith('/')) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+      } else if (!imgUrl.startsWith('http')) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
+      }
 
       // Skip images with undesired keywords
       if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
@@ -338,10 +352,16 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       try {
         // Get image dimensions
         const dimensions = await getImageDimensions(imgUrl);
-        if (!dimensions) continue;
+        if (!dimensions) {
+          console.warn(`Could not get dimensions for image: ${imgUrl}`);
+          continue;
+        }
 
         // Only consider images between 400 and 1500 pixels wide
-        if (dimensions.width < 400 || dimensions.width > 1500) continue;
+        if (dimensions.width < 400 || dimensions.width > 1500) {
+          console.debug(`Skipping image due to size constraints: ${imgUrl}, width: ${dimensions.width}`);
+          continue;
+        }
 
         // Use vision model to analyze the image
         const visionInfo = await analyzeImageWithVision(imgUrl);
@@ -371,9 +391,19 @@ async function getImageDimensions(imageUrl: string): Promise<{ width: number; he
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) return null;
-    const buffer = await response.buffer();
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     const dimensions = sizeOf(buffer);
-    return dimensions;
+
+    if (!dimensions || typeof dimensions.width !== 'number' || typeof dimensions.height !== 'number') {
+      return null;
+    }
+
+    return {
+      width: dimensions.width,
+      height: dimensions.height
+    };
   } catch (error) {
     console.error('Error getting image dimensions for', imageUrl, error);
     return null;
