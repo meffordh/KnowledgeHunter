@@ -527,14 +527,24 @@ Important: Integrate relevant media content naturally within the report where it
     // Post-process the report to ensure proper media embedding
     media.forEach((m) => {
       if (m.type === "video" && m.embedCode) {
-        // Replace any standard YouTube links with embed codes
-        const videoUrl = m.url.replace(/watch\?v=/, "embed/");
-        report = report.replace(
-          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, "g"),
-          m.embedCode,
-        );
+        // Handle both watch and embed URLs
+        const videoUrlPatterns = [
+          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, "g"), // Markdown link format
+          new RegExp(m.url, "g"), // Plain URL
+          new RegExp(m.url.replace("watch?v=", "embed/"), "g") // Embed URL format
+        ];
+
+        videoUrlPatterns.forEach(pattern => {
+          report = report.replace(pattern, "\n\n" + m.embedCode + "\n\n");
+        });
       }
     });
+
+    // Clean up any remaining plain YouTube URLs by converting them to markdown links
+    report = report.replace(
+      /https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/g,
+      "[$&]($&)"
+    );
 
     return report;
   } catch (error) {
