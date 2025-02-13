@@ -1,70 +1,26 @@
-# KnowledgeHunter
+### Recent Improvements (February 2025)
 
-**KnowledgeHunter** is an advanced research and report generation platform that leverages AI, real-time data extraction, and cutting-edge analysis to deliver comprehensive, high-quality research reports. With dynamic query processing, customizable report templates, and robust real-time progress updates, KnowledgeHunter transforms the way research is performed and shared.
+#### Enhanced URL Fetching and Content Processing
+- **Smart URL Handling:** Implemented intelligent timeout management (2000ms default) for faster response to problematic URLs
+- **Improved Error Detection:** Added early detection and skipping of problematic URLs (PDFs, government sites)
+- **Redirect Management:** Enhanced handling of URL redirects with manual redirect mode to prevent redirect chains
+- **Header Optimization:** Added realistic browser-like headers to improve compatibility with various web servers
+- **Graceful Error Recovery:** Enhanced error logging and fallback mechanisms for different types of network failures
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](https://knowledgehunter.io)
-[![Developer](https://img.shields.io/badge/Developer-Hunter_Mefford-blue)](https://www.linkedin.com/in/mefford)
+#### Advanced Image Processing
+- **Robust JSON Parsing:** Improved vision analysis with strict JSON schema enforcement and validation
+- **Error Resilience:** Added comprehensive error handling for malformed JSON responses from vision analysis
+- **Batch Processing:** Enhanced batch image analysis with proper type checking and validation
+- **Fallback Mechanisms:** Implemented graceful degradation when image analysis fails, ensuring continuous operation
+- **Enhanced Logging:** Added detailed error logging for debugging vision analysis issues
 
----
+### Error Boundaries
 
-## Overview
+The new error boundary component ensures that any errors (e.g., "this.setData is not a function") during markdown rendering do not crash the entire application.
 
-KnowledgeHunter automates research workflows by:
+### Real-Time Progress Updates
 
-- **Dynamic Query Processing:** Intelligent trimming and parameter determination via AI models.
-- **Iterative Research Loops:** Automatically generates follow-up queries to refine and deepen research.
-- **Multi-Modal Data Extraction:** Uses Firecrawl to search the web, validate YouTube videos, and detect media content.
-- **Vision Model Integration:** Applies a vision model to analyze and validate image content, ensuring only high-quality images are considered.
-- **Adaptive Research Modes:** Choose between **Quick Hunter** (balanced, faster research) and **Deep Hunter** (comprehensive, detailed analysis) modes.
-- **Rich Report Rendering:** Produces final reports in Markdown—including markdown table rendering and rich media embeds.
-- **Real-Time Progress Indicators:** Provides live progress updates over WebSockets so users can follow research in real time.
-- **UI/UX Enhancements:** A refreshed, responsive, and intuitive user interface with improved interactions, error boundaries, and clear status feedback.
-
----
-
-## Updated Research Flow
-
-The updated process now distinguishes between Quick Hunter vs Deep Hunter modes, integrates vision-based image analysis and YouTube video validation, and enriches report rendering with markdown table support. Below is the updated Mermaid flowchart:
-
-
-```mermaid
-flowchart TD
-    A["Start: handleResearch"]
-    B["Trim query with trimPrompt (BALANCED)"]
-    C["Determine research parameters (Model: BALANCED)"]
-    D["Output: breadth & depth (Quick Hunter vs Deep Hunter)"]
-    E["Loop over query iterations"]
-    F["Process iteration with researchQuery"]
-    G["Search via FirecrawlApp.search"]
-    H["Detect media content & validate YouTube videos"]
-    I["Vision Model Analysis for Images"]
-    J["Compile & trim context (trimPrompt with MEDIA)"]
-    K["Analyze data with OpenAI (Model: MEDIA)"]
-    L["Render Markdown with Tables & Formatting"]
-    M["Generate follow-up queries (BALANCED)"]
-    N["Accumulate learnings, URLs & Media"]
-    O["Format report (Model: MEDIA)"]
-    P["Final Report in Markdown with Progress Indicators"]
-    Q["Send real-time progress updates (WebSocket)"]
-
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    L --> N
-    E -- Optional --> M
-    M --> N
-    N --> O
-    O --> P
-    P --> Q
-```
+The `sendProgress` function (using WebSockets) provides users with live updates throughout the research process.
 
 ## Key Features
 
@@ -200,7 +156,32 @@ npm run dev
 └── shared/              # Shared types and schemas
 ```
 
-## Additional Updates & Modularization
+## Recent Updates & Performance Improvements
+
+### Enhanced URL Fetching (February 2025)
+- **Intelligent Timeout Management:** Implemented smart 2000ms default timeout with early termination for problematic URLs
+- **Proactive URL Filtering:** Added detection and automatic skipping of known problematic URLs (PDFs, specific domains)
+- **Advanced Redirect Handling:** Manual redirect mode prevents redirect chains and reduces timeout incidents
+- **Optimized Headers:** Added comprehensive browser-like headers for improved compatibility and reduced blocks
+- **Enhanced Error Recovery:**
+  - Detailed error logging for different failure types (timeout, connection reset, etc.)
+  - Graceful fallback mechanisms for various network failures
+  - TypeScript error handling improvements
+
+### Vision Analysis & Image Processing
+- **Robust JSON Handling:**
+  - Strict JSON schema enforcement in vision analysis responses
+  - Comprehensive validation of parsed content structure
+  - Type-safe image analysis results
+- **Error Prevention:**
+  - Added proper error boundaries for malformed JSON responses
+  - Enhanced batch processing with proper type checking
+  - Improved logging for debugging vision analysis issues
+- **Performance Optimization:**
+  - Parallel processing of image batches
+  - Efficient filtering of problematic images
+  - Smart fallback mechanisms when analysis fails
+
 
 ### Markdown Rendering Modularization
 
@@ -219,16 +200,3 @@ const SafeMarkdown = ({ content }: { content: string }) => (
 );
 
 export default SafeMarkdown;
-```
-
-### Error Boundaries
-
-The new error boundary component ensures that any errors (e.g., "this.setData is not a function") during markdown rendering do not crash the entire application.
-
-### Real-Time Progress Updates
-
-The `sendProgress` function (using WebSockets) provides users with live updates throughout the research process.
-
-## Contributing
-
-Contributions, issues, and feature requests are welcome! Please check [Issues](https://github.com/meffordh/KnowledgeHunter/issues) or open a pull request.
