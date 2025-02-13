@@ -310,14 +310,14 @@ async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]>
       messages: [
         {
           role: "system",
-          content: "You are a visual analysis assistant. Analyze the array of image URLs provided by the user and determine for each image if it is useful for research purposes. For each image, return a JSON object with the following keys: 'url' (the original URL), 'isUseful' (a boolean), 'title' (a short descriptive title), and 'description' (a brief description). Respond with a JSON array of such objects.",
+          content: "You are a precise JSON generator for vision analysis. Your response must be ONLY valid JSON, with no additional text, comments, or formatting. The JSON must follow this exact schema: { \"images\": [ { \"url\": string, \"isUseful\": boolean, \"title\": string, \"description\": string } ] }. Do not include any explanations or markdown formatting.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: `Analyze these images and determine which ones could be useful for research purposes:\n${JSON.stringify(urls)}`,
+              text: `Analyze these images and determine which ones could be useful for research purposes. Respond with ONLY valid JSON:\n${JSON.stringify(urls)}`,
             }
           ],
         },
@@ -326,18 +326,40 @@ async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]>
     });
 
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) {
-      console.error("Invalid response from vision analysis");
+    if (!content) {
+      console.error("Empty response from vision analysis");
       return urls.map(url => ({ url, isUseful: false }));
     }
 
-    const results = JSON.parse(content);
-    if (!Array.isArray(results.images)) {
-      console.error("Invalid results format from vision analysis");
+    let parsedContent;
+    try {
+      parsedContent = JSON.parse(content);
+
+      if (!Array.isArray(parsedContent.images)) {
+        console.error("Invalid response structure from vision analysis:", content);
+        return urls.map(url => ({ url, isUseful: false }));
+      }
+
+      // Additional validation of the parsed content
+      const isValidImage = (img: any): img is AnalyzedImage => {
+        return typeof img.url === 'string' &&
+               typeof img.isUseful === 'boolean' &&
+               (!img.title || typeof img.title === 'string') &&
+               (!img.description || typeof img.description === 'string');
+      };
+
+      const validImages = parsedContent.images.filter(isValidImage);
+      if (validImages.length === 0) {
+        console.error("No valid image analysis results found");
+        return urls.map(url => ({ url, isUseful: false }));
+      }
+
+      return validImages;
+    } catch (error) {
+      console.error("Failed to parse vision analysis response:", error);
+      console.error("Raw response content:", content);
       return urls.map(url => ({ url, isUseful: false }));
     }
-
-    return results.images;
   } catch (error) {
     console.error("Error in batch vision analysis:", error);
     return urls.map(url => ({ url, isUseful: false }));
