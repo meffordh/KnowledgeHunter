@@ -1,0 +1,160 @@
+### **Parallelize Network Calls in Research Process**
+
+#### **Objective**
+Refactor the inner loop of the research workflow (in `server/deep-research.ts`) so that multiple search queries at each depth level are processed concurrently using `Promise.all()`. This change should reduce the total waiting time by executing network calls (like calling `researchQuery`) in parallel rather than sequentially.
+
+---
+
+#### **Tasks & Directives**
+
+1. **Identify the Affected Code**
+   - **File:** `server/deep-research.ts`
+   - **Function:** `handleResearch`
+   - **Section:** The nested loop that iterates over current queries for each depth level.
+
+   **Current (Before) Code:**
+   ```ts
+   // Inside handleResearch() in server/deep-research.ts
+   let currentQueries = [autoResearch.query];
+   for (let d = 0; d < autoResearch.depth; d++) {
+     const newQueries: string[] = [];
+     for (
+       let i = 0;
+       i < currentQueries.length && i < autoResearch.breadth;
+       i++
+     ) {
+       const query = currentQueries[i];
+
+       // Update progress before starting search
+       currentStep++;
+       sendProgress({
+         status: "IN_PROGRESS",
+         currentQuery: query,
+         learnings: allLearnings,
+         progress: currentStep,
+         totalProgress: totalSteps,
+         visitedUrls,
+         media: allMedia,
+       });
+
+       // Sequentially process each query
+       const { findings, urls, media } = await researchQuery(query);
+
+       // Update state based on results
+       allLearnings.push(...findings);
+       visitedUrls.push(...urls.filter(Boolean));
+       allMedia.push(...media);
+
+       // In non-fast mode, generate follow-up queries for the next depth
+       if (!research.fastMode && d < autoResearch.depth - 1) {
+         const followUpQueries = await expandQuery(query);
+         newQueries.push(...followUpQueries);
+       }
+     }
+     currentQueries = newQueries;
+   }
+   ```
+
+2. **Refactor the Inner Loop to Parallelize the Calls**
+   - **Action:** Replace the inner sequential loop with a parallelized version. For each depth iteration, map the current queries to an array of promises (by calling `researchQuery(query)` for each query) and then use `Promise.all()` to await all results at once.
+   - **Before/After Comparison:**
+
+   **After:**
+   ```ts
+   // Refactored code inside handleResearch() in server/deep-research.ts
+   let currentQueries = [autoResearch.query];
+   for (let d = 0; d < autoResearch.depth; d++) {
+     // For each depth level, process all current queries concurrently up to the specified breadth.
+     const queriesToProcess = currentQueries.slice(0, autoResearch.breadth);
+
+     // Update progress for all queries about to be processed (optional: can be done inside the mapping)
+     // You might also decide to update progress individually after each Promise resolves if needed.
+     
+     // Map each query to a promise that processes the query via researchQuery
+     const promises = queriesToProcess.map(async (query) => {
+       // Update progress before starting each query
+       currentStep++;
+       sendProgress({
+         status: "IN_PROGRESS",
+         currentQuery: query,
+         learnings: allLearnings,
+         progress: currentStep,
+         totalProgress: totalSteps,
+         visitedUrls,
+         media: allMedia,
+       });
+       
+       // Process the query concurrently
+       const result = await researchQuery(query);
+
+       // If not in fast mode and if this is not the final depth,
+       // generate follow-up queries concurrently.
+       let followUpQueries: string[] = [];
+       if (!research.fastMode && d < autoResearch.depth - 1) {
+         followUpQueries = await expandQuery(query);
+       }
+       return { result, followUpQueries };
+     });
+
+     // Await all queries in parallel
+     const results = await Promise.all(promises);
+
+     // Process each result and aggregate learnings, URLs, media, and next queries
+     const newQueries: string[] = [];
+     results.forEach(({ result, followUpQueries }) => {
+       const { findings, urls, media } = result;
+       allLearnings.push(...findings);
+       visitedUrls.push(...urls.filter(Boolean));
+       allMedia.push(...media);
+       newQueries.push(...followUpQueries);
+     });
+
+     // Set up next depth level with the new queries generated
+     currentQueries = newQueries;
+   }
+   ```
+
+   - **Comments:**
+     - **Parallelization:**  
+       // The inner loop now maps each query into a promise (via researchQuery) and uses Promise.all to process them concurrently.
+     - **Progress Updates:**  
+       // We update progress for each query before processing it. You may adjust this to provide a consolidated progress update if needed.
+     - **Follow-Up Queries:**  
+       // For non-fast mode, follow-up queries are generated in parallel along with processing each query.
+     - **File Reference:**  
+       // This change impacts the overall research process in `handleResearch()` which in turn is invoked from the WebSocket message handling in `server/routes.ts`.
+
+3. **Ensure Modular and Extensible Code**
+   - **Instruction:**  
+     - Verify that `handleResearch` remains under 500 lines. If it grows too large with additional parallelization logic, consider extracting the parallel processing block into its own helper function (e.g. `processQueriesInParallel(queries: string[], depth: number, ...)` in a new file such as `server/utils/researchUtils.ts`).
+     - Document the new helper function with clear comments explaining its purpose and its relationship to the overall research flow.
+
+4. **Testing and Verification**
+   - **Action:**  
+     - Test the modified research flow using a variety of query depths and breadths.  
+     - Verify that all network calls occur in parallel and that overall processing time decreases compared to the sequential approach.
+     - Confirm that progress updates are sent correctly via the WebSocket (look at the logs in `routes.ts` where `sendProgress` is called).
+
+5. **Documentation and Comments**
+   - **Instruction:**  
+     - Add inline comments in the refactored code to describe how parallelization is implemented.
+     - Update any related documentation (if applicable) to note that the research queries are now executed concurrently, improving responsiveness.
+
+6. **Final Checks and Refactoring**
+   - **Reminder:**  
+     - Ensure that the codebase remains modular and maintainable. Each file should ideally remain under 500 lines.
+     - Run the full test suite (or manually test the research functionality) to confirm that the changes have not introduced regressions.
+
+---
+
+#### **Summary & Rationale**
+
+- **Rationale:**  
+  Processing multiple search queries concurrently (using `Promise.all`) dramatically reduces waiting time when breadth and depth are high. This “parallelization” ensures that network calls are not held up by slow responses, resulting in a faster overall research process.
+
+- **Expected Outcome:**  
+  The modified `handleResearch` function will quickly process all queries in parallel, update progress concurrently, and then aggregate all findings. This leads to a more responsive system when executing large research tasks.
+
+---
+
+Please implement these changes carefully and verify functionality by testing both normal and edge-case queries. Ensure that the code remains modular and well-documented, and refactor into new modules if any file becomes too complex.

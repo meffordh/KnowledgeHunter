@@ -1,0 +1,148 @@
+#### **Objective**
+Improve the application’s response time during user knowledge searches by ensuring that any URL fetches (used for media detection) fail fast if unresponsive or if they encounter excessive redirects. This should be accomplished by wrapping every fetch call with custom headers and an AbortController timeout. All changes must preserve overall functionality without breaking the application.
+
+---
+
+#### **Tasks & Directives**
+
+1. **Create a New Utility Module for Fetching with Timeout**
+   - **File:** Create a new file at `server/utils/fetchUtils.ts`.
+   - **Purpose:** Isolate the new `fetchWithTimeout` function in its own module so that the logic is reusable and the file sizes remain under 500 lines (separation of concerns).
+   - **Content:** Implement a function that wraps the native fetch call with:
+     - An AbortController that cancels the request after a configurable timeout (e.g. 5000ms).
+     - Custom headers (e.g. a realistic `User-Agent` and `Accept` header) to help avoid blocks or redirects.
+     - Proper error handling that logs errors and immediately throws so that the caller can “fail fast.”
+     
+   **Before (current code in `detectMediaContent`):**
+   ```ts
+   // In server/deep-research.ts, within detectMediaContent():
+   const response = await fetch(url);
+   if (!response.ok) {
+     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+   }
+   const html = await response.text();
+   ```
+   
+   **After (new utility function in `server/utils/fetchUtils.ts`):**
+   ```ts
+   // server/utils/fetchUtils.ts
+   import { AbortController } from "abort-controller"; // if needed
+
+   /**
+    * Fetches a URL with a custom timeout and headers.
+    * @param url The URL to fetch.
+    * @param timeout Duration in ms before aborting (default: 5000ms).
+    * @returns The response text.
+    * @throws Error if the request fails, times out, or returns an error status.
+    */
+   export async function fetchWithTimeout(url: string, timeout = 5000): Promise<string> {
+     const controller = new AbortController();
+     const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+     try {
+       const response = await fetch(url, {
+         headers: {
+           "User-Agent":
+             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+           "Accept":
+             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+         },
+         // Using "follow" so that we follow redirects, but note that excessive redirects will throw
+         redirect: "follow",
+         signal: controller.signal,
+       });
+       clearTimeout(timeoutId);
+       if (!response.ok) {
+         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+       }
+       return await response.text();
+     } catch (error) {
+       clearTimeout(timeoutId);
+       console.error("fetchWithTimeout error for URL:", url, error);
+       throw error;
+     }
+   }
+   ```
+   - **Comments:**  
+     // This utility is referenced by the media detection logic in `server/deep-research.ts`.  
+     // Ensuring that each fetch call uses these headers and a timeout improves our "fail fast" behavior.
+
+2. **Update `detectMediaContent` in `server/deep-research.ts` to Use the New Utility**
+   - **File:** `server/deep-research.ts`
+   - **Action:** Import the `fetchWithTimeout` function from your new utility file and replace the direct `fetch(url)` call in the `detectMediaContent` function.
+   - **Before:**
+   ```ts
+   // Existing code in detectMediaContent:
+   const response = await fetch(url);
+   if (!response.ok) {
+     console.warn(`Failed to fetch URL: ${url}, status: ${response.status}`);
+     return [];
+   }
+   const html = await response.text();
+   ```
+   - **After:**
+   ```ts
+   // At the top of the file, add:
+   import { fetchWithTimeout } from "./utils/fetchUtils";
+
+   async function detectMediaContent(url: string): Promise<MediaContent[]> {
+     try {
+       // Use our utility to fetch HTML with a 5-second timeout
+       const html = await fetchWithTimeout(url, 5000);
+       // ... (continue processing HTML to extract media)
+       return []; // Replace with your extraction logic
+     } catch (error) {
+       console.error("Error fetching URL in detectMediaContent:", url, error);
+       // Fail fast by returning an empty array if the fetch fails
+       return [];
+     }
+   }
+   ```
+   - **Comments:**  
+     // Changing this in `detectMediaContent` ensures that any unresponsive or misbehaving URL is skipped quickly.  
+     // This change also impacts how media content is handled in research queries (see `researchQuery` in the same file).
+
+3. **Refactor and Modularize**
+   - **Instruction:** Ensure that the changes are isolated within these files and that no file exceeds 500 lines. If any file becomes too large, refactor the code by extracting related functionality into new modules (for example, create additional utility modules if needed).
+   - **Rationale:** This separation keeps each module focused on a single concern and improves maintainability.
+   - **Example:** If `deep-research.ts` becomes very long, consider creating separate modules for:
+     - Media extraction (e.g., `server/utils/mediaExtractor.ts`)
+     - Query expansion or report formatting functions.
+
+4. **Testing and Verification**
+   - **Action:** After making these changes, add unit tests for `fetchWithTimeout` (if your project has a test suite) and manually verify that:
+     - When a URL is unresponsive or redirects too many times, the error is caught quickly.
+     - The overall research process continues without waiting on problematic URLs.
+   - **Reference:** You can simulate unresponsive URLs using dummy endpoints or by changing the timeout value.
+
+5. **Review Impact on Other Parts of the Codebase**
+   - **Files Affected:**
+     - `server/deep-research.ts`: Updated to use the new `fetchWithTimeout` for media detection.
+     - `server/routes.ts`: This file references `handleResearch`, which in turn calls `detectMediaContent`—verify that no downstream error handling is negatively impacted.
+   - **Note:** Ensure that any code that calls these functions handles the possibility of an empty media array gracefully.
+
+6. **Documentation and Comments**
+   - **Instruction:** Update inline comments to explain why these changes were made:
+     - That the custom headers and AbortController are used to “fail fast” on unresponsive URLs.
+     - Include a brief note at the top of the new utility file (e.g. `fetchUtils.ts`) about its purpose.
+   - **Rationale:** Clear comments will help other developers (and your future self) understand the purpose and function of these changes.
+
+7. **Final Checks**
+   - **Reminder:** Before committing, check that your changes do not break the existing application behavior.
+   - **Instruction:** Use the development environment (via `npm run dev`) to run the application, trigger media detection by testing with known good and bad URLs, and confirm that errors are logged and that the system proceeds without delay.
+   - **Documentation:** Ensure that you include a brief README update (if applicable) in the `server/utils` directory explaining the purpose of `fetchUtils.ts`.
+
+---
+
+#### **Summary of Rationale and Expected Outcome**
+
+- **Rationale:**  
+  By wrapping fetch calls with custom headers and an AbortController timeout, we ensure that if a URL is unresponsive, takes too long to load, or gets caught in a redirect loop, the request will abort quickly. This prevents slow or blocked URLs from delaying the research process and allows the application to move on to the next URL without affecting the user experience.  
+  In addition, creating a separate utility file for this functionality keeps our code modular and maintainable.
+
+- **Expected Outcome:**  
+  The application should respond more quickly to knowledge searches because problematic URLs will be skipped fast. The code will be cleaner and more maintainable due to the separation of concerns, with each file kept under 500 lines whenever possible.
+
+---
+
+Please proceed with these changes carefully, ensuring that all modifications are tested and documented as described.
