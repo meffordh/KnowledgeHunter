@@ -202,6 +202,15 @@ npm run dev
 
 ## Additional Updates & Modularization
 
+### Recent Improvements (February 2025)
+#### Enhanced URL Fetching and Content Processing
+- **Smart URL Handling:** Implemented intelligent timeout management (2000ms default) for faster response to problematic URLs
+- **Improved Error Detection:** Added early detection and skipping of problematic URLs (PDFs, government sites)
+- **Redirect Management:** Enhanced handling of URL redirects with manual redirect mode to prevent redirect chains
+- **Header Optimization:** Added realistic browser-like headers to improve compatibility with various web servers
+- **Graceful Error Recovery:** Enhanced error logging and fallback mechanisms for different types of network failures
+
+
 ### Markdown Rendering Modularization
 
 To avoid cluttering `deep-research.ts`, we extracted the markdown rendering into its own component. For example, in `SafeMarkdown.tsx`:
