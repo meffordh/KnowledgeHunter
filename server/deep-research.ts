@@ -6,6 +6,7 @@ import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
 import sizeOf from "image-size";
+import { fetchWithTimeout } from "./utils/fetchUtils";
 
 // Initialize API clients using environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -352,13 +353,8 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
   }
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.warn(`Failed to fetch URL: ${url}, status: ${response.status}`);
-      return [];
-    }
-
-    const html = await response.text();
+    // Use our new utility to fetch HTML with a 5-second timeout
+    const html = await fetchWithTimeout(url, 5000);
     const mediaContent: MediaContent[] = [];
 
     // Process YouTube videos (existing code remains unchanged)
@@ -741,7 +737,6 @@ async function expandQuery(query: string): Promise<string[]> {
   }
 }
 
-// Update handleResearch to use BALANCED model for fast mode
 async function handleResearch(
   research: Research,
   ws: WebSocket,
@@ -764,11 +759,7 @@ async function handleResearch(
       : await determineResearchParameters(research.query);
 
     // Calculate total steps for progress tracking
-    // Quick Hunt: Search (25%) -> Analysis (25%) -> Report Generation (50%)
-    // Deep Hunt: Uses breadth * depth for more detailed progress
-    const totalSteps = research.fastMode
-      ? 4
-      : parameters.breadth * parameters.depth;
+    const totalSteps = research.fastMode ? 4 : parameters.breadth * parameters.depth;
     console.log(
       `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? "Quick Hunt" : "Deep Hunt"}`,
     );
@@ -792,15 +783,12 @@ async function handleResearch(
 
     let currentQueries = [autoResearch.query];
     for (let d = 0; d < autoResearch.depth; d++) {
-      const newQueries: string[] = [];
-      for (
-        let i = 0;
-        i < currentQueries.length && i < autoResearch.breadth;
-        i++
-      ) {
-        const query = currentQueries[i];
+      // For each depth level, process all current queries concurrently up to the specified breadth
+      const queriesToProcess = currentQueries.slice(0, autoResearch.breadth);
 
-        // Update progress before starting search
+      // Map each query to a promise that processes the query
+      const promises = queriesToProcess.map(async (query) => {
+        // Update progress before starting each query
         currentStep++;
         sendProgress({
           status: "IN_PROGRESS",
@@ -812,24 +800,32 @@ async function handleResearch(
           media: allMedia,
         });
 
-        // Research using balanced model for fast mode
-        const { findings, urls, media } = await researchQuery(query);
+        // Process the query concurrently
+        const result = await researchQuery(query);
 
-        // In Quick Hunt mode, update progress after analysis
-        if (research.fastMode) {
-          currentStep++;
+        // If not in fast mode and if this is not the final depth,
+        // generate follow-up queries concurrently
+        let followUpQueries: string[] = [];
+        if (!research.fastMode && d < autoResearch.depth - 1) {
+          followUpQueries = await expandQuery(query);
         }
+        return { result, followUpQueries };
+      });
 
+      // Await all queries in parallel
+      const results = await Promise.all(promises);
+
+      // Process each result and aggregate learnings, URLs, media, and next queries
+      const newQueries: string[] = [];
+      results.forEach(({ result, followUpQueries }) => {
+        const { findings, urls, media } = result;
         allLearnings.push(...findings);
         visitedUrls.push(...urls.filter(Boolean));
         allMedia.push(...media);
+        newQueries.push(...followUpQueries);
+      });
 
-        // Only generate follow-up queries in normal mode
-        if (!research.fastMode && d < autoResearch.depth - 1) {
-          const followUpQueries = await expandQuery(query);
-          newQueries.push(...followUpQueries);
-        }
-      }
+      // Set up next depth level with the new queries generated
       currentQueries = newQueries;
     }
 
@@ -855,7 +851,6 @@ async function handleResearch(
       mode: research.fastMode ? "Quick Hunt" : "Deep Hunt",
     });
 
-    // Use balanced model for report formatting in fast mode
     const formattedReport = await formatReport(
       autoResearch.query,
       allLearnings,
@@ -875,7 +870,7 @@ async function handleResearch(
       learnings: allLearnings,
       progress: currentStep,
       totalProgress: totalSteps,
-      report: formattedReport,
+      report:formattedReport,
       visitedUrls,
       media: allMedia,
     });
@@ -898,7 +893,8 @@ async function handleResearch(
 export {
   generateClarifyingQuestions,
   handleResearch,
-  detectMediaContent,
+  formatReport,
+  researchQuery,
   getImageDimensions,
   analyzeImageWithVision,
   analyzeImagesWithVision,
