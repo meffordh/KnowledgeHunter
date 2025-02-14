@@ -270,7 +270,8 @@ async function analyzeImageWithVision(
     const messages = [
       {
         role: "system" as const,
-        content: "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
+        content:
+          "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
       },
       {
         role: "user" as const,
@@ -402,7 +403,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
                 });
               }
             }
-          })
+          }),
         );
       } catch (error) {
         console.error(`Error processing image batch from ${url}:`, error);
@@ -410,7 +411,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     }
 
     console.log(
-      `Successfully processed ${mediaContent.length} media items from ${url}`
+      `Successfully processed ${mediaContent.length} media items from ${url}`,
     );
     return mediaContent;
   } catch (error) {
@@ -768,8 +769,7 @@ function constructProgressUpdate(
 ): EnhancedProgress {
   return {
     status,
-    currentQuery:
-      context.learnings[context.learnings.length - 1] || context.query,
+    currentQuery: context.learnings[context.learnings.length - 1] || context.query,
     learnings: context.learnings,
     progress: context.currentDepth,
     totalProgress: context.totalDepth,
@@ -786,24 +786,6 @@ function constructProgressUpdate(
     },
     ...(report ? { report } : {}),
     ...(error ? { error } : {}),
-  };
-}
-
-function updateResearchContext(
-  context: ResearchContext,
-  updates: Partial<ResearchContext>,
-): ResearchContext {
-  return {
-    ...context,
-    ...updates,
-    processedQueries:
-      updates.processedQueries !== undefined
-        ? updates.processedQueries
-        : context.processedQueries + (updates.currentBreadth || 0),
-    batchesInCurrentDepth:
-      updates.batchesInCurrentDepth !== undefined
-        ? updates.batchesInCurrentDepth
-        : context.batchesInCurrentDepth,
   };
 }
 
@@ -938,6 +920,10 @@ async function handleResearch(
       batchesInCurrentDepth: 0,
     };
 
+    // Initialize metrics at the start
+    const startMetrics = calculateProgressMetrics(context);
+    sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
+
     let currentQueries = [context.query];
     let completionConfidence = 0;
 
@@ -959,13 +945,11 @@ async function handleResearch(
       );
 
       // Update progress before starting the batch
-      const startMetrics = calculateProgressMetrics(context);
-      sendProgress(
-        constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
-      );
+      const batchMetrics = calculateProgressMetrics(context);
+      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", batchMetrics));
 
       const results = await Promise.all(
-        queries.map(async (query) => {
+        queries        .map(async (query) => {
           console.log(`Executing query: ${query}`);
           const result = await researchQuery(query);
 
@@ -974,6 +958,7 @@ async function handleResearch(
             ...context,
             processedQueries: context.processedQueries + 1,
           });
+
           sendProgress(
             constructProgressUpdate(context, "IN_PROGRESS", queryMetrics),
           );
@@ -1001,9 +986,10 @@ async function handleResearch(
         );
       }
 
-      context = updateResearchContext(context, {
+      context = {
+        ...context,
         processedQueries: context.processedQueries + queries.length,
-      });
+      };
 
       console.log(
         `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
@@ -1068,15 +1054,16 @@ async function handleResearch(
     );
   } catch (error) {
     console.error("Error in handleResearch:", error);
-    sendProgress({
-      status: "ERROR",
-      learnings: [],
-      progress: 0,
-      totalProgress: 1,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-      visitedUrls: [],
-      media: [],
-    });
+    const errorMetrics = calculateProgressMetrics(context);
+    sendProgress(
+      constructProgressUpdate(
+        context,
+        "ERROR",
+        errorMetrics,
+        undefined,
+        error instanceof Error ? error.message : "Unknown error occurred",
+      ),
+    );
   }
 }
 
