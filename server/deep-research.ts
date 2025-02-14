@@ -958,7 +958,8 @@ async function handleResearch(
         `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
       );
 
-      // Update progress before starting the batch      const startMetrics = calculateProgressMetrics(context);
+      // Update progress before starting the batch
+      const startMetrics = calculateProgressMetrics(context);
       sendProgress(
         constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
       );
