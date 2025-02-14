@@ -1,0 +1,180 @@
+logs indicate a few key errors that need to be fixed to ensure your deep-research module runs smoothly:
+
+1. Error: Unknown model for trimPrompt
+Issue:
+javascript
+Copy
+Edit
+Error trimming prompt for gpt-4o-2024-11-20: Error: Unknown model
+The encodingForModel function in js-tiktoken does not recognize the model name "gpt-4o-2024-11-20", causing a failure in trimPrompt.
+The fallback "cl100k_base" is being used, but it still triggers the same error.
+Fix:
+Modify trimPrompt to explicitly use "cl100k_base" instead of relying on encodingForModel:
+
+typescript
+Copy
+Edit
+function trimPrompt(text: string, modelConfig: typeof MODEL_CONFIG[keyof typeof MODEL_CONFIG]): string {
+  try {
+    const enc = encodingForModel("cl100k_base"); // Use a safe, known tokenizer
+    const tokens = enc.encode(text);
+
+    if (tokens.length <= modelConfig.maxTokens) {
+      return text;
+    }
+
+    console.warn(`Prompt exceeds token limit (${tokens.length} > ${modelConfig.maxTokens}) for model ${modelConfig.name}. Trimming prompt.`);
+
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    let trimmedText = "";
+    let currentTokens = 0;
+
+    for (const sentence of sentences) {
+      const candidateText = trimmedText ? `${trimmedText} ${sentence}` : sentence;
+      const candidateTokens = enc.encode(candidateText).length;
+
+      if (candidateTokens <= modelConfig.maxTokens) {
+        trimmedText = candidateText;
+        currentTokens = candidateTokens;
+      } else {
+        break;
+      }
+    }
+
+    console.warn(`Trimmed prompt for ${modelConfig.name} from ${tokens.length} to ${currentTokens} tokens`);
+    return trimmedText;
+  } catch (error) {
+    console.error(`Error trimming prompt for ${modelConfig.name}:`, error);
+    return text;
+  }
+}
+2. Query Expansion Error: Missing "confidence" Field
+Issue:
+css
+Copy
+Edit
+Failed to parse or validate query expansion response: ZodError: [
+  {
+    "code": "invalid_type",
+    "expected": "number",
+    "received": "undefined",
+    "path": ["confidence"],
+    "message": "Required"
+  }
+]
+The OpenAI API did not return a confidence field in the query expansion response.
+The Zod schema expects confidence to always be present.
+Fix:
+Update the schema to make confidence optional and provide a default value if missing:
+
+typescript
+Copy
+Edit
+const QueryExpansionResponse = z.object({
+  queries: z.array(z.string()),
+  reasoning: z.string().optional(),
+  confidence: z.number().min(0).max(1).optional() // Make it optional
+});
+Then, in expandQuery, if confidence is missing, assign it a default:
+
+typescript
+Copy
+Edit
+const parsedResponse = JSON.parse(content);
+const validatedResponse = QueryExpansionResponse.parse(parsedResponse);
+const confidence = validatedResponse.confidence ?? 0.5; // Default confidence to 0.5 if missing
+3. OpenAI Error: max_tokens Too Large
+Issue:
+vbnet
+Copy
+Edit
+Error formatting report: BadRequestError: 400 max_tokens is too large: 127000. This model supports at most 100000 completion tokens, whereas you provided 127000.
+The max_tokens parameter in formatReport is exceeding the model’s limit.
+Fix:
+Ensure the max_tokens value is within the supported limit:
+
+typescript
+Copy
+Edit
+const MAX_COMPLETION_TOKENS = 100000;
+
+async function formatReport(
+  query: string,
+  learnings: string[],
+  visitedUrls: string[],
+  media: MediaContent[]
+): Promise<string> {
+  try {
+    const modelConfig = MODEL_CONFIG.DEEP; 
+    const context = {
+      query,
+      learnings: learnings.slice(-50),
+      sources: visitedUrls,
+      mediaContent: media.map(m => ({
+        type: m.type,
+        url: m.url,
+        title: m.title || undefined,
+        description: m.description || undefined
+      }))
+    };
+
+    const response = await openai.chat.completions.create({
+      model: modelConfig.name,
+      messages: [
+        {
+          role: "system",
+          content: "Generate a comprehensive research report..."
+        },
+        { role: "user", content: JSON.stringify(context) }
+      ],
+      max_tokens: Math.min(modelConfig.maxTokens - 1000, MAX_COMPLETION_TOKENS) // Limit max_tokens
+    });
+
+    const report = response.choices[0]?.message?.content;
+    if (!report) throw new Error("Failed to generate report content");
+    return report;
+  } catch (error) {
+    console.error("Error formatting report:", error);
+    return `Error generating report: ${error instanceof Error ? error.message : "Unknown error"}`;
+  }
+}
+4. No Findings Despite Multiple Query Expansions
+Issue:
+nginx
+Copy
+Edit
+Skipping batch processing - no findings to process
+Queries are being executed but returning no relevant findings.
+This is likely due to Firecrawl (or another data source) returning empty results.
+Fix:
+Modify researchQuery to handle empty results and attempt a broader search:
+
+typescript
+Copy
+Edit
+async function researchQuery(query: string): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
+  try {
+    console.log("Performing research query:", query);
+    
+    const fcResult = await firecrawl.search({ query });
+    const parsedResult = FirecrawlResult.safeParse(fcResult);
+
+    if (!parsedResult.success || parsedResult.data.length === 0) {
+      console.warn(`No results found for query: ${query}`);
+      return { findings: ["No relevant findings available for this query."], urls: [], media: [] };
+    }
+
+    const findings = parsedResult.data.map(item => item.content || "").filter(content => content.trim() !== "");
+    const urls = parsedResult.data.map(item => item.url);
+    const media: MediaContent[] = []; // Can add logic for image extraction
+
+    return { findings, urls, media };
+  } catch (error) {
+    console.error("Error in researchQuery for query:", query, error);
+    return { findings: ["Error retrieving results."], urls: [], media: [] };
+  }
+}
+This ensures that:
+
+If no results are found, the system doesn’t fail silently—it provides a placeholder finding.
+The log includes a warning when results are missing.

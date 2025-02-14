@@ -628,6 +628,8 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
 // -----------------------------
 // Helper: formatReport
 // -----------------------------
+const MAX_COMPLETION_TOKENS = 100000;
+
 async function formatReport(
   query: string,
   learnings: string[],
@@ -640,13 +642,14 @@ async function formatReport(
       query,
       learnings: learnings.slice(-50),
       sources: visitedUrls,
-      mediaContent: media.map((m) => ({
+      mediaContent: media.map(m => ({
         type: m.type,
         url: m.url,
         title: m.title || undefined,
-        description: m.description || undefined,
-      })),
+        description: m.description || undefined
+      }))
     };
+
     const response = await openai.chat.completions.create({
       model: modelConfig.name,
       messages: [
@@ -666,22 +669,17 @@ async function formatReport(
 - Focus on relevance and engagment
 - Include a sources section`,
         },
-        { role: "user", content: JSON.stringify(context) },
+        { role: "user", content: JSON.stringify(context) }
       ],
-      max_completion_tokens: modelConfig.maxTokens - 1000,
+      max_tokens: Math.min(modelConfig.maxTokens - 1000, MAX_COMPLETION_TOKENS)
     });
+
     const report = response.choices[0]?.message?.content;
     if (!report) throw new Error("Failed to generate report content");
     return report;
   } catch (error) {
     console.error("Error formatting report:", error);
-    return `Error generating content: ${error instanceof Error ? error.message : "Unknown error"}
-
-## Raw Findings
-${learnings.join("\n\n")}
-
-## Sources
-${visitedUrls.join("\n")}`;
+    return `Error generating report: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 }
 
@@ -765,23 +763,28 @@ function updateResearchContext(
 // -----------------------------
 // New Implementation: researchQuery
 // -----------------------------
-async function researchQuery(
-  query: string,
-): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
+async function researchQuery(query: string): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
     console.log("Performing research query:", query);
-    // Update firecrawl search call to pass query string directly
+
     const fcResult = await firecrawl.search(query);
-    const parsedResult = FirecrawlResult.parse(fcResult);
-    const findings = parsedResult.data
-      .map((item) => item.content || "")
-      .filter((content) => content.trim() !== "");
-    const urls = parsedResult.data.map((item) => item.url);
+    const parsedResult = FirecrawlResult.safeParse(fcResult);
+
+    if (!parsedResult.success || parsedResult.data.data.length === 0) {
+      console.warn(`No results found for query: ${query}`);
+      return { findings: ["No relevant findings available for this query."], urls: [], media: [] };
+    }
+
+    const findings = parsedResult.data.data
+      .map(item => item.content || "")
+      .filter(content => content.trim() !== "");
+    const urls = parsedResult.data.data.map(item => item.url);
     const media: MediaContent[] = [];
+
     return { findings, urls, media };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
-    return { findings: [], urls: [], media: [] };
+    return { findings: ["Error retrieving results."], urls: [], media: [] };
   }
 }
 
