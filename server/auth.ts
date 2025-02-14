@@ -5,7 +5,7 @@ import { storage } from './storage';
 const router = express.Router();
 
 // Protected route to get user data
-router.get('/api/auth/user', ClerkExpressRequireAuth(), async (req, res) => {
+router.get('/api/auth/user', ClerkExpressRequireAuth(), async (req, res, next) => {
   try {
     const userId = req.auth?.userId;
     if (!userId) {
@@ -25,12 +25,16 @@ router.get('/api/auth/user', ClerkExpressRequireAuth(), async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    console.error('Error syncing user:', error);
-    res.status(500).json({ error: 'Error syncing user data' });
+    next(error); // Pass error to error handling middleware
   }
 });
 
+// Error handling middleware
+router.use((err, req, res, next) => {
+  console.error('Auth error:', err.stack);
+  res.status(401).json({ error: 'Unauthenticated!' });
+});
+
 export function setupAuth(app: express.Express) {
-  // Mount auth router directly
   app.use(router);
 }

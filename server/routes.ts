@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from 'ws';
 import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
+import cors from 'cors';
 import { setupAuth } from './auth.js';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
@@ -9,18 +10,15 @@ import { storage } from './storage';
 import { handleLinkedInShare } from './linkedin';
 
 export function registerRoutes(app: Express): Server {
-  // Add CORS middleware
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
+  // Configure CORS
+  app.use(cors({
+    origin: true, // Allow all origins in development
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
+  }));
 
-  // Initialize Clerk
+  // Initialize Clerk with auth
   app.use(ClerkExpressWithAuth());
 
   // Setup auth routes

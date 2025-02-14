@@ -1,0 +1,271 @@
+Sep 26, 2024
+In this guide, we will cover how to use Clerk with Express to authenticate API requests using ClerkExpressWithAuth() and ClerkExpressRequireAuth() middleware.
+
+Category
+Guides
+Jump to
+Prerequisites
+Securing API Endpoints
+Create the API with Express
+Testing the route with Postman
+Testing authentication with React
+
+When calling multiple external APIs from an application using Clerk for authentication, you need to ensure that each API request is properly authenticated and secured. Implementing authentication in Express or Node.js is crucial for ensuring your API's integrity, security, and reliable operation. This reassures you that your APIs are protected and functioning as intended.
+
+In this tutorial, we'll explore how to use Clerk with Express to authenticate API requests using ClerkExpressWithAuth() and ClerkExpressRequireAuth() middleware, and build a secure and robust backend for your application.
+
+Diagram showing how multiple APIs can be authenticated with Clerk
+Prerequisites
+To following along with this article, make sure you have the following:
+
+Create a Clerk account.
+Create a Clerk application.
+Node.js and npm installed on your computer.
+Postman installed on your computer.
+Securing API Endpoints
+To secure multiple external APIs with your application and Clerk, you can use Clerk's authentication middleware to protect your API endpoints. Clerk provides middleware that can be used to authenticate requests to your API endpoints. This middleware can be applied to routes that need authentication, ensuring that only authenticated users can access these endpoints.
+
+For Express applications, Clerk offers two middleware options:
+
+ClerkExpressWithAuth(): This middleware attaches the authenticated user's session to the request object, allowing you to access user information in your route handlers.
+ClerkExpressRequireAuth(): This middleware ensures that only authenticated requests can access the protected routes and will throw an error if the request is not authenticated.
+Let's explore how both middlewares can be used with Express.
+
+Create the API with Express
+Start by opening an empty directory on your computer and initializing a new Node project with the following command:
+
+
+npm init -y
+Now open the package.json file and update it to add the "type": "module" setting as shown below:
+
+package.json
+
+{
+  "name": "api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+Next, we need to install the following packages:
+
+express is the web framework for Node.js we're going to use. Express is a great option for running Node servers because it's fast and minimal.
+cors allows us to easily call the endpoint from a client
+dotenv is used to read environmental variables in Node.
+@clerk/clerk-sdk-node is the Node.js SDK for the Clerk user management platform.
+These can be installed by running the following command in the your terminal:
+
+
+npm install express cors dotenv @clerk/clerk-sdk-node
+Once installation completes, find your CLERK_PUBLISHABLE_KEY & CLERK_SECRET_KEY in the Clerk dashboard on the Quickstart screen if this is a new application, or in the Configure tab in the sidebar under API keys.
+
+Because you are building these routes on the backend, it is safe to include the CLERK_SECRET_KEY in your environment variables.
+
+Note
+
+To learn how to set environemt variables for your project, check out the How to set environment variables in Node.js article.
+
+Finally, create a file named server.js and add the following code to it. Note that both Clerk middleware functions are being used on different routes to test the behavior of each. Below those routes is an error-handling middleware to address any errors that are thrown. If an error occurs in any middleware function that is run before the ClerkExpressRequireAuth middleware, this function will be called.
+
+server.js
+
+import 'dotenv/config' // To read CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY
+import express from 'express'
+import { ClerkExpressRequireAuth, ClerkExpressWithAuth } from '@clerk/clerk-sdk-node'
+import cors from 'cors'
+
+const port = process.env.PORT || 3000
+
+const app = express()
+app.use(cors())
+
+// Use the strict middleware that throws when unauthenticated
+app.get('/protected-auth-required', ClerkExpressRequireAuth(), (req, res) => {
+  res.json(req.auth)
+})
+
+// Use the lax middleware that returns an empty auth object when unauthenticated
+app.get('/protected-auth-optional', ClerkExpressWithAuth(), (req, res) => {
+  res.json(req.auth)
+})
+
+// Error handling middleware function
+app.use((err, req, res, next) => {
+  console.error(err.stack)
+  res.status(401).send('Unauthenticated!')
+})
+
+// Route not utilizing any authentication
+app.get('/', function (req, res) {
+  res.send('Hello World!')
+})
+
+app.listen(port, () => {
+  console.log(`Example app listening at http://localhost:${port}`)
+})
+Let's start the API server by running the following command in the terminal:
+
+
+node server.js
+You should now see that message from in your app.listen(…) terminal:
+
+
+Example app listening at http://localhost:3000
+Testing the route with Postman
+Postman is a tool that's used to dispatch requests to various endpoints and analyze the results. With Postman open, create a new request by selecting File > New. In the modal that appears, select HTTP as the request type.
+
+In the URL field, type in http://localhost:3000/protected-auth-required and click Send. The results will be displayed in the Response tab like so:
+
+The response window from Postman showing a 401 status and an "Unauthenticated!" string in the response body.
+While accessing the /protected-auth-required route without authentication will return a 401 response as defined in the error handling middleware, accessing the /protected-auth-optional route will return an empty JSON object instead. Feel free to create a new request in Postman and send the request.
+
+This is the expected response:
+
+
+{
+  "sessionClaims": null,
+  "sessionId": null,
+  "session": null,
+  "userId": null,
+  "user": null,
+  "actor": null,
+  "orgId": null,
+  "orgRole": null,
+  "orgSlug": null,
+  "organization": null,
+  "claims": null
+}
+Testing authentication with React
+Let's create a React app so we can add Clerk to it and test the API endpoints after being authenticated. Open an empty directory in your terminal and run the following command to initialize a new React app:
+
+
+npm create vite@latest
+You'll be guided through a series of questions, use the following answers for each:
+
+Ok to proceed? (y) y
+Project name: app
+Select a framework: React
+Select a variant: TypeScript
+Next, run the following command to switch directories, install the dependencies, and launch the project:
+
+
+cd app
+npm install
+npm run dev
+You should now be able to open your browser to http://localhost:5173/ to access the React app.
+
+Set up Clerk
+Next, follow the Clerk React Quickstart Guide to add Clerk to the app you just created. Once done, replace the code in src/App.jsx to render the <SignInButton> if the user is not signed in, or the <UserButton> if they are:
+
+src/App.tsx
+
+import './App.css'
+import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react'
+
+function App() {
+  return (
+    <>
+      <p>Hello World!</p>
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
+      <SignedIn>
+        <UserButton />
+      </SignedIn>
+    </>
+  )
+}
+
+export default App
+Now click the Sign-in button and test that you can sign-in using your preferred method. After fully authenticating, the Sign-in button will be replaced with your avatar, which is the <UserButton> component.
+
+Accessing the API via React
+Next, we'll update App.tsx again with the following changes. This code will add the useAuth hook provided by the Clerk React SDK, which contains the getToken function used to obtain the JWT for the currently authenticated user.
+
+That token will be used in the Authorization header of the fetch requests to our API, each of which can be called by clicking the appropriate button that is rendered in the browser. Finally, we're storing the responses of each call in a data state and simply displaying that as a string in the browser.
+
+src/App.tsx
+
+import './App.css'
+import { SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/clerk-react'
+import { SignInButton, SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react'
+import { useState } from 'react'
+
+function App() {
+  const { getToken } = useAuth()
+  const [data, setData] = useState({})
+
+  async function callProtectedAuthRequired() {
+    const token = await getToken()
+    const res = await fetch('http://localhost:3000/protected-auth-required', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const json = await res.json()
+    setData(json)
+  }
+
+  async function callProtectedAuthOptional() {
+    const token = await getToken()
+    const res = await fetch('http://localhost:3000/protected-auth-optional', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const json = await res.json()
+    setData(json)
+  }
+
+  return (
+    <>
+      <p>Hello World!</p>
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
+      <SignedIn>
+        <UserButton />
+        <button onClick={callProtectedAuthRequired}>Call /protected-auth-required</button>
+        <button onClick={callProtectedAuthOptional}>Call /protected-auth-optional</button>
+        <h1>Data from API:</h1>
+        <p>{JSON.stringify(data, null, 2)}</p>
+      </SignedIn>
+    </>
+  )
+}
+
+export default App
+In the browser, click each of the newly rendered buttons to display a payload similar to the following JSON on the page:
+
+
+{
+  "sessionClaims": {
+    "azp": "http://localhost:5173",
+    "exp": 1720558905,
+    "iat": 1720558845,
+    "iss": "https://boss-squid-85.clerk.accounts.dev",
+    "nbf": 1720558835,
+    "sid": "sess_2j1ZjdrAVrALRRTkn8ZFXHDQ7Qy",
+    "sub": "user_2iQUovqEkfcRDScQrXvAIfGQgUn"
+  },
+  "sessionId": "sess_2j1ZjdrAVrALRRTkn8ZFXHDQ7Qy",
+  "userId": "user_2iQUovqEkfcRDScQrXvAIfGQgUn",
+  "claims": {
+    "azp": "http://localhost:5173",
+    "exp": 1720558905,
+    "iat": 1720558845,
+    "iss": "https://boss-squid-85.clerk.accounts.dev",
+    "nbf": 1720558835,
+    "sid": "sess_2j1ZjdrAVrALRRTkn8ZFXHDQ7Qy",
+    "sub": "user_2iQUovqEkfcRDScQrXvAIfGQgUn"
+  }
+}
+Conclusion
+Authentication should be swift and efficient to ensure it gets done, rather than sitting in your backlog for months or leaving your endpoints vulnerable to attackers. By using Clerk Middlewares, In this case, ClerkExpressWithAuth() or ClerkExpressRequireAuth(), you can secure any endpoint and integrate authentication with Express without the complexity of building it from scratch.
