@@ -32,86 +32,10 @@ const imageDimensionCache = new LRUCache<
 
 // Enhanced model configuration
 const MODEL_CONFIG = {
-  BALANCED: {
-    name: "gpt-4o-2024-11-20",
-    maxTokens: 128000,
-    summaryTokens: 8000,
-    tokenizer: "cl100k_base",
-  },
-  DEEP: {
-    name: "o3-mini-2025-01-31",
-    maxTokens: 128000,
-    summaryTokens: 12000,
-    tokenizer: "cl100k_base",
-  },
-  MEDIA: {
-    name: "gpt-4o-mini-2024-07-18",
-    maxTokens: 16000,
-    summaryTokens: 4000,
-    tokenizer: "cl100k_base",
-  },
+  BALANCED: "gpt-4o-2024-11-20", // Used for both fast and normal mode
+  DEEP: "o3-mini-2025-01-31", // Used only for detailed analysis in normal mode
+  MEDIA: "gpt-4o-mini-2024-07-18", // Used for media processing
 } as const;
-
-// -----------------------------
-// Zod Schemas for Validation
-// -----------------------------
-const FirecrawlResult = z.object({
-  success: z.boolean(),
-  data: z.array(
-    z.object({
-      url: z.string().url(),
-      title: z.string().optional(),
-      description: z.string().optional(),
-      content: z.string().optional(),
-      metadata: z.record(z.string(), z.unknown()).optional(),
-    }),
-  ),
-});
-
-const OpenAIMessage = z.object({
-  role: z.enum(["system", "user", "assistant"]),
-  content: z.string(),
-});
-
-const OpenAIResponse = z.object({
-  id: z.string(),
-  choices: z.array(
-    z.object({
-      message: OpenAIMessage,
-      finish_reason: z
-        .enum(["stop", "length", "content_filter", "tool_calls"])
-        .optional(),
-      index: z.number(),
-    }),
-  ),
-  usage: z
-    .object({
-      prompt_tokens: z.number(),
-      completion_tokens: z.number(),
-      total_tokens: z.number(),
-    })
-    .optional(),
-});
-
-const QueryExpansionResponse = z.object({
-  queries: z.array(z.string()),
-  reasoning: z.string().optional(),
-  confidence: z.number().min(0).max(1).optional().default(0.5),
-});
-
-const SufficiencyResponse = z.object({
-  isComplete: z.boolean(),
-  confidence: z.number().min(0).max(1),
-  reasoning: z.string(),
-  suggestedNextSteps: z.array(z.string()).optional(),
-  analysis: z
-    .object({
-      coverage: z.number().min(0).max(1),
-      depth: z.number().min(0).max(1),
-      relevance: z.number().min(0).max(1),
-    })
-    .optional(),
-});
 
 // -----------------------------
 // Types & Interfaces
@@ -899,184 +823,166 @@ async function handleResearch(
   ws: WebSocket,
   onComplete?: (report: string, visitedUrls: string[]) => Promise<void>,
 ) {
-  const sendProgress = (progress: EnhancedProgress) => {
+  const sendProgress = (progress: ResearchProgress) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(progress));
     }
   };
 
   try {
-    let context: ResearchContext = {
-      query: research.query,
+    console.log(
+      `Starting research in ${research.fastMode ? "Quick Hunt" : "Deep Hunt"} mode`,
+    );
+
+    // Always use fixed minimal parameters for fast mode
+    const parameters = research.fastMode
+      ? { breadth: 1, depth: 1 }
+      : await determineResearchParameters(research.query);
+
+    // Calculate total steps for progress tracking
+    const totalSteps = research.fastMode ? 4 : parameters.breadth * parameters.depth;
+    console.log(
+      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? "Quick Hunt" : "Deep Hunt"}`,
+    );
+
+    const autoResearch = { ...research, ...parameters };
+    const allLearnings: string[] = [];
+    const visitedUrls: string[] = [];
+    const allMedia: MediaContent[] = [];
+    let currentStep = 0;
+
+    // Initial progress update
+    sendProgress({
+      status: "IN_PROGRESS",
+      currentQuery: autoResearch.query,
       learnings: [],
+      progress: currentStep,
+      totalProgress: totalSteps,
       visitedUrls: [],
-      clarifications: research.clarifications || {},
       media: [],
-      currentDepth: 0,
-      totalDepth: research.fastMode ? 2 : 5,
-      currentBreadth: 0,
-      totalBreadth: research.fastMode ? 3 : 8,
-      processedQueries: 0,
-      batchesInCurrentDepth: 0,
-    };
-
-    // Initialize metrics at the start
-    const startMetrics = calculateProgressMetrics(context);
-    sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
-
-    let currentQueries = [context.query];
-    let completionConfidence = 0;
-
-    console.log("Starting research:", {
-      query: research.query,
-      fastMode: research.fastMode,
-      maxDepth: context.totalDepth,
-      maxBreadth: context.totalBreadth,
     });
 
-    while (context.currentDepth < context.totalDepth) {
-      const queries = currentQueries.slice(0, context.totalBreadth);
-      context = updateResearchContext(context, {
-        currentBreadth: queries.length,
+    let currentQueries = [autoResearch.query];
+    for (let d = 0; d < autoResearch.depth; d++) {
+      // For each depth level, process all current queries concurrently up to the specified breadth
+      const queriesToProcess = currentQueries.slice(0, autoResearch.breadth);
+
+      // Map each query to a promise that processes the query
+      const promises = queriesToProcess.map(async (query) => {
+        // Update progress before starting each query
+        currentStep++;
+        sendProgress({
+          status: "IN_PROGRESS",
+          currentQuery: query,
+          learnings: allLearnings,
+          progress: currentStep,
+          totalProgress: totalSteps,
+          visitedUrls,
+          media: allMedia,
+        });
+
+        // Process the query concurrently
+        const result = await researchQuery(query);
+
+        // If not in fast mode and if this is not the final depth,
+        // generate follow-up queries concurrently
+        let followUpQueries: string[] = [];
+        if (!research.fastMode && d < autoResearch.depth - 1) {
+          followUpQueries = await expandQuery(query);
+        }
+        return { result, followUpQueries };
       });
 
-      console.log(
-        `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
-      );
+      // Await all queries in parallel
+      const results = await Promise.all(promises);
 
-      // Update progress before starting the batch
-      const batchMetrics = calculateProgressMetrics(context);
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", batchMetrics));
+      // Process each result and aggregate learnings, URLs, media, and next queries
+      const newQueries: string[] = [];
+      results.forEach(({ result, followUpQueries }) => {
+        const { findings, urls, media } = result;
+        allLearnings.push(...findings);
+        visitedUrls.push(...urls.filter(Boolean));
+        allMedia.push(...media);
+        newQueries.push(...followUpQueries);
+      });
 
-      const results = await Promise.all(
-        queries        .map(async (query) => {
-          console.log(`Executing query: ${query}`);
-          const result = await researchQuery(query);
+      // Set up next depth level with the new queries generated
+      currentQueries = newQueries;
+    }
 
-          // Send progress update after each query completion
-          const queryMetrics = calculateProgressMetrics({
-            ...context,
-            processedQueries: context.processedQueries + 1,
-          });
-
-          sendProgress(
-            constructProgressUpdate(context, "IN_PROGRESS", queryMetrics),
-          );
-
-          return result;
-        }),
-      );
-
-      let newFindings = 0;
-      for (const result of results) {
-        const processedFindings = await processBatchFindings(
-          result.findings,
-          MODEL_CONFIG.BALANCED,
-          context,
-        );
-        newFindings += processedFindings.length;
-        context.learnings.push(...processedFindings);
-        context.visitedUrls.push(...result.urls);
-        context.media.push(...result.media);
-
-        // Send progress update after processing each batch of findings
-        const batchMetrics = calculateProgressMetrics(context);
-        sendProgress(
-          constructProgressUpdate(context, "IN_PROGRESS", batchMetrics),
-        );
-      }
-
-      context = {
-        ...context,
-        processedQueries: context.processedQueries + queries.length,
-      };
-
-      console.log(
-        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
-      );
-
-      const metrics = calculateProgressMetrics(context);
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
-
-      const sufficientResponse = await isResearchSufficient(context);
-      completionConfidence = sufficientResponse.confidence;
-
-      if (
-        sufficientResponse.isComplete &&
-        sufficientResponse.confidence >= 0.8
-      ) {
-        console.log(
-          `Research deemed sufficient with ${(sufficientResponse.confidence * 100).toFixed(1)}% confidence`,
-        );
-        console.log("Reasoning:", sufficientResponse.reasoning);
-        break;
-      }
-
-      if (context.currentDepth < context.totalDepth - 1) {
-        currentQueries = await expandQuery(context);
-        if (currentQueries.length === 0) {
-          console.log("No more queries to expand, stopping iteration");
-          break;
-        }
-        console.log(
-          `Generated ${currentQueries.length} follow-up queries for next depth`,
-        );
-      }
-
-      context = updateResearchContext(context, {
-        currentDepth: context.currentDepth + 1,
-        currentBreadth: 0,
-        batchesInCurrentDepth: 0,
+    // Update progress before report generation
+    if (research.fastMode) {
+      currentStep++;
+      sendProgress({
+        status: "IN_PROGRESS",
+        currentQuery: "Generating final report...",
+        learnings: allLearnings,
+        progress: currentStep,
+        totalProgress: totalSteps,
+        visitedUrls,
+        media: allMedia,
       });
     }
 
-    console.log("Generating final report");
-    const report = await formatReport(
-      context.query,
-      context.learnings,
-      context.visitedUrls,
-      context.media,
+    console.log("Generating final report with:", {
+      queryCount: allLearnings.length,
+      learnings: allLearnings,
+      urlCount: visitedUrls.length,
+      mediaCount: allMedia.length,
+      mode: research.fastMode ? "Quick Hunt" : "Deep Hunt",
+    });
+
+    const formattedReport = await formatReport(
+      autoResearch.query,
+      allLearnings,
+      visitedUrls,
+      allMedia,
     );
 
     if (onComplete) {
-      await onComplete(report, context.visitedUrls);
+      await onComplete(formattedReport, visitedUrls);
     }
 
-    console.log("Research completed successfully");
-    const finalMetrics = calculateProgressMetrics(context);
-    sendProgress(
-      constructProgressUpdate(
-        context,
-        "COMPLETED",
-        { ...finalMetrics, confidence: completionConfidence },
-        report,
-      ),
-    );
+    // Send final progress update with completed report
+    sendProgress({
+      status: "COMPLETED",
+      currentQuery: autoResearch.query,
+      learnings: allLearnings,
+      progress: totalSteps,
+      totalProgress: totalSteps,
+      visitedUrls,
+      media: allMedia,
+      report: formattedReport,
+    });
   } catch (error) {
     console.error("Error in handleResearch:", error);
-    const errorMetrics = calculateProgressMetrics(context);
-    sendProgress(
-      constructProgressUpdate(
-        context,
-        "ERROR",
-        errorMetrics,
-        undefined,
-        error instanceof Error ? error.message : "Unknown error occurred",
-      ),
-    );
+    sendProgress({
+      status: "ERROR",      currentQuery: research.query,
+      learnings: [],
+      progress: 0,
+      totalProgress: 1,
+      visitedUrls: [],
+      media: [],
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    });
   }
 }
 
-// -----------------------------
-// Exports
-// -----------------------------
-export {
+async function determineResearchParameters(
+  query: string,
+): Promise<{ breadth: number; depth: number }> {
+  // Placeholder for a more sophisticated parameter determination logic
+  // This could involve analyzing the query complexity or using a separate model
+  const breadth = Math.floor(Math.random() * 5) + 3;
+  const depth = Math.floor(Math.random() * 3) + 2;
+  return { breadth, depth };
+}
+
+
+export { 
   handleResearch,
   generateClarifyingQuestions,
   formatReport,
   researchQuery,
   type MediaContent,
-  type ResearchContext,
-  type ResearchProgressInfo,
-  type EnhancedProgress,
 };
