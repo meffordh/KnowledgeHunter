@@ -96,7 +96,7 @@ const OpenAIResponse = z.object({
 const QueryExpansionResponse = z.object({
   queries: z.array(z.string()),
   reasoning: z.string().optional(),
-  confidence: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1).optional().default(0.5),
 });
 
 const SufficiencyResponse = z.object({
@@ -160,7 +160,14 @@ function trimPrompt(
   modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
 ): string {
   try {
-    const enc = encodingForModel(modelConfig.tokenizer);
+    let enc;
+    try {
+      enc = encodingForModel(modelConfig.tokenizer);
+    } catch (error) {
+      console.warn(`Falling back to cl100k_base for model ${modelConfig.name}`);
+      enc = encodingForModel("cl100k_base");
+    }
+
     const tokens = enc.encode(text);
     if (tokens.length <= modelConfig.maxTokens) return text;
     console.warn(
@@ -661,7 +668,7 @@ async function formatReport(
         },
         { role: "user", content: JSON.stringify(context) },
       ],
-      max_tokens: modelConfig.maxTokens - 1000,
+      max_completion_tokens: modelConfig.maxTokens - 1000,
     });
     const report = response.choices[0]?.message?.content;
     if (!report) throw new Error("Failed to generate report content");
