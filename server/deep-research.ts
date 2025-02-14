@@ -155,37 +155,67 @@ type EnhancedProgress = ResearchProgress & ResearchProgressInfo;
 // -----------------------------
 // Helper: trimPrompt
 // -----------------------------
-function trimPrompt(
-  text: string,
-  modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG]
-): string {
+function trimPrompt(text: string, model: string): string {
   try {
-    const tokenizerName = "cl100k_base"; // Always use cl100k_base tokenizer
-    const enc = encodingForModel(tokenizerName);
-    const tokens = enc.encode(text);
+    // Always use a safe, known tokenizer
+    const enc = encodingForModel("gpt-4");
 
-    let maxTokens = modelConfig.maxTokens;
-    // Adjust token limits based on model
-    if (modelConfig.name.includes("gpt-4o")) {
-      maxTokens = Math.min(maxTokens, 16000);
-    } else if (modelConfig.name.includes("o3-mini")) {
-      maxTokens = Math.min(maxTokens, 128000);
+    let maxTokens = 8000; // Default token limit
+    if (model.includes("o3-mini")) {
+      maxTokens = 128000;
+    } else if (model.includes("gpt-4o")) {
+      maxTokens = 16000;
     }
 
+    const tokens = enc.encode(text);
     if (tokens.length <= maxTokens) {
       return text;
     }
 
     console.warn(
-      `Prompt exceeds token limit (${tokens.length} > ${maxTokens}) for model ${modelConfig.name}. Trimming prompt.`
+      `Prompt exceeds ${maxTokens} tokens for ${model}. Trimming...`,
     );
 
-    // Trim to token limit and decode back to text
-    const trimmedTokens = tokens.slice(0, maxTokens);
-    return enc.decode(trimmedTokens);
+    // Sentence-based trimming
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    let trimmedText = "";
+    let currentTokens = 0;
+
+    for (const sentence of sentences) {
+      const candidateText = trimmedText
+        ? `${trimmedText} ${sentence}`
+        : sentence;
+      const candidateTokens = enc.encode(candidateText).length;
+
+      if (candidateTokens <= maxTokens) {
+        trimmedText = candidateText;
+        currentTokens = candidateTokens;
+      } else {
+        break;
+      }
+    }
+
+    // Word-level fallback trimming if needed
+    if (currentTokens > maxTokens) {
+      const words = trimmedText.split(" ");
+      let finalTrimmedText = "";
+      for (const word of words) {
+        const candidateTokens = enc.encode(
+          finalTrimmedText + " " + word,
+        ).length;
+        if (candidateTokens <= maxTokens) {
+          finalTrimmedText += " " + word;
+        } else {
+          break;
+        }
+      }
+      return finalTrimmedText.trim();
+    }
+
+    return trimmedText;
   } catch (error) {
-    console.error(`Error trimming prompt for ${modelConfig.name}:`, error);
-    return text;
+    console.error(`Error trimming prompt for ${model}:`, error);
+    return text.slice(0, 5000); // Return a hardcoded safe fallback
   }
 }
 
@@ -233,35 +263,47 @@ async function getImageDimensions(
 // Helper: analyzeImageWithVision
 // -----------------------------
 async function analyzeImageWithVision(
-  imageUrl: string,
-): Promise<{ isUseful: boolean; title?: string; description?: string }> {
+  imageUrls: string[],
+): Promise<Array<{ isUseful: boolean; title?: string; description?: string }>> {
   try {
+    // Build messages array with text content and multiple images
+    const messages = [
+      {
+        role: "system" as const,
+        content: "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
+      },
+      {
+        role: "user" as const,
+        content: [
+          {
+            type: "text",
+            text: "Analyze these images and determine if they are useful for research purposes:",
+          },
+          ...imageUrls.map((url) => ({
+            type: "image_url",
+            image_url: { url },
+          })),
+        ],
+      },
+    ];
+
     const response = await openai.chat.completions.create({
       model: MODEL_CONFIG.MEDIA.name,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the image and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            prompt:
-              "Analyze this image and determine if it's useful for research purposes:",
-            image_url: imageUrl,
-          }),
-        },
-      ],
+      messages,
+      max_tokens: 150 * imageUrls.length, // Adjust tokens based on batch size
       response_format: { type: "json_object" },
-      max_tokens: 150,
     });
+
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) return { isUseful: false };
+    if (!content || !content.trim().startsWith("[")) {
+      console.warn("Invalid vision analysis response format");
+      return imageUrls.map(() => ({ isUseful: false }));
+    }
+
     return JSON.parse(content);
   } catch (error) {
-    console.error("Vision analysis error for", imageUrl, error);
-    return { isUseful: false };
+    console.error("Vision analysis error for images:", error);
+    return imageUrls.map(() => ({ isUseful: false }));
   }
 }
 
@@ -273,37 +315,38 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     console.warn("Received empty URL in detectMediaContent");
     return [];
   }
+
   try {
     const html = await fetchWithTimeout(url, 5000);
     const mediaContent: MediaContent[] = [];
 
-    // Process YouTube videos
+    // Process YouTube videos first
     const youtubeRegex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of Array.from(youtubeMatches)) {
       const videoId = match[1];
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log(`Validating YouTube video: ${videoUrl}`);
       if (await isYouTubeVideoValid(videoUrl)) {
         mediaContent.push({
           type: "video",
           url: videoUrl,
           embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
         });
-        console.log(`Added valid YouTube video: ${videoUrl}`);
       }
     }
 
-    // Enhanced image processing
+    // Batch process images
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
     const imgMatches = html.matchAll(imgRegex);
     const imageUrls = new Set<string>();
+    const imagesToAnalyze: string[] = [];
 
+    // Collect and filter images
     for (const match of Array.from(imgMatches)) {
       let imgUrl = match[1];
 
-      // Skip common non-content images
+      // Skip non-content images
       if (
         imgUrl.includes("icon") ||
         imgUrl.includes("logo") ||
@@ -311,7 +354,6 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl.includes("thumbnail") ||
         !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)
       ) {
-        console.log(`Skipping non-content image: ${imgUrl}`);
         continue;
       }
 
@@ -324,41 +366,51 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
-      // Only process each unique image URL once
+      // Only process unique images
       if (!imageUrls.has(imgUrl)) {
         imageUrls.add(imgUrl);
+        imagesToAnalyze.push(imgUrl);
+      }
+    }
 
-        try {
-          console.log(`Analyzing image: ${imgUrl}`);
-          const analysis = await analyzeImageWithVision(imgUrl);
+    // Process images in batches
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < imagesToAnalyze.length; i += BATCH_SIZE) {
+      const batch = imagesToAnalyze.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch of ${batch.length} images from ${url}`);
 
-          if (analysis.isUseful) {
-            const dimensions = await getImageDimensions(imgUrl);
+      try {
+        const analyses = await analyzeImageWithVision(batch);
 
-            if (
-              dimensions &&
-              dimensions.width >= 400 &&
-              dimensions.width <= 2500
-            ) {
-              console.log(`Adding useful image: ${imgUrl}`);
-              mediaContent.push({
-                type: "image",
-                url: imgUrl,
-                title: analysis.title,
-                description: analysis.description,
-              });
-            } else {
-              console.log(`Skipping image due to dimensions: ${imgUrl}`);
+        // Process each analyzed image
+        await Promise.all(
+          analyses.map(async (analysis, index) => {
+            if (analysis.isUseful) {
+              const imgUrl = batch[index];
+              const dimensions = await getImageDimensions(imgUrl);
+
+              if (
+                dimensions &&
+                dimensions.width >= 400 &&
+                dimensions.width <= 2500
+              ) {
+                mediaContent.push({
+                  type: "image",
+                  url: imgUrl,
+                  title: analysis.title,
+                  description: analysis.description,
+                });
+              }
             }
-          }
-        } catch (error) {
-          console.error(`Error processing image ${imgUrl}:`, error);
-        }
+          })
+        );
+      } catch (error) {
+        console.error(`Error processing image batch from ${url}:`, error);
       }
     }
 
     console.log(
-      `Successfully processed ${mediaContent.length} media items from ${url}`,
+      `Successfully processed ${mediaContent.length} media items from ${url}`
     );
     return mediaContent;
   } catch (error) {
@@ -906,8 +958,7 @@ async function handleResearch(
         `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
       );
 
-      // Update progress before starting the batch
-      const startMetrics = calculateProgressMetrics(context);
+      // Update progress before starting the batch      const startMetrics = calculateProgressMetrics(context);
       sendProgress(
         constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
       );
@@ -954,7 +1005,8 @@ async function handleResearch(
       });
 
       console.log(
-        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,      );
+        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
+      );
 
       const metrics = calculateProgressMetrics(context);
       sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));

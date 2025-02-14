@@ -1,0 +1,57 @@
+updated function with the necessary adjustments:
+
+ts
+Copy
+async function analyzeImageWithVision(
+  imageUrls: string[],
+): Promise<Array<{ isUseful: boolean; title?: string; description?: string }>> {
+  try {
+    // Build the messages array directly using an array (no JSON.stringify)
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "Analyze these images and determine if they are useful for research purposes:",
+          },
+          ...imageUrls.map((url) => ({
+            type: "image_url",
+            image_url: { url },
+          })),
+        ],
+      },
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA.name,
+      messages,
+      // Adjust max_tokens based on the number of images
+      max_tokens: 150 * imageUrls.length,
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0]?.message?.content;
+    // If the response doesn't start with an array, return default false results
+    if (!content || !content.trim().startsWith("[")) {
+      return imageUrls.map(() => ({ isUseful: false }));
+    }
+    return JSON.parse(content);
+  } catch (error) {
+    console.error("Vision analysis error for images", imageUrls, error);
+    return imageUrls.map(() => ({ isUseful: false }));
+  }
+}
+Implementation Instructions Summary
+Parameter Update: Change the function parameter from a single URL to an array of URLs.
+Payload Construction: Build the messages array with a system message and a user message. In the user message, provide a text prompt followed by one object per image URL—each with "type": "image_url" and its URL. (Do not JSON.stringify the array; supply it directly.)
+Token Allocation: Set max_tokens proportional to the number of images (e.g., 150 tokens per image).
+Response Handling: Verify that the API’s response is a JSON array by checking for the opening "[" and parse accordingly.
+This update conforms with the OpenAI documentation for multiple image inputs, ensuring that the API receives the correctly structured payload and minimizes the number of calls by batching images in one request. 
+PLATFORM.OPENAI.COM
