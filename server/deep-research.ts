@@ -1,3 +1,5 @@
+// deep-research.ts - True drop-in replacement
+
 import OpenAI from "openai";
 import { z } from "zod";
 import FirecrawlApp from "@mendable/firecrawl-js";
@@ -5,154 +7,590 @@ import { WebSocket } from "ws";
 import { Research, ResearchProgress } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
-import sizeOf from "image-size";
 import { fetchWithTimeout } from "./utils/fetchUtils";
+import sizeOf from "image-size";
+import { LRUCache } from "lru-cache";
 
-// Initialize API clients using environment variables
+// -----------------------------
+// Initialization & Model Config
+// -----------------------------
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
 if (!OPENAI_API_KEY || !FIRECRAWL_API_KEY) {
-  throw new Error(
-    "Missing required API keys. Please set OPENAI_API_KEY and FIRECRAWL_API_KEY in Secrets.",
-  );
+  throw new Error("Missing required API keys");
 }
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 const firecrawl = new FirecrawlApp({ apiKey: FIRECRAWL_API_KEY });
 
-// Update MODEL_CONFIG to use correct model names and remove redundant models
+// Cache for image dimensions (TTL 1 hour)
+const imageDimensionCache = new LRUCache<
+  string,
+  { width: number; height: number }
+>({
+  max: 500,
+  ttl: 1000 * 60 * 60,
+});
+
+// Enhanced model configuration
 const MODEL_CONFIG = {
-  BALANCED: "gpt-4o-2024-11-20", // Used for both fast and normal mode
-  DEEP: "o3-mini-2025-01-31", // Used only for detailed analysis in normal mode
-  MEDIA: "gpt-4o-mini-2024-07-18", // Used for media processing
+  BALANCED: {
+    name: "gpt-4o-2024-11-20",
+    maxTokens: 128000,
+    summaryTokens: 8000,
+    tokenizer: "cl100k_base",
+  },
+  DEEP: {
+    name: "o3-mini-2025-01-31",
+    maxTokens: 128000,
+    summaryTokens: 12000,
+    tokenizer: "cl100k_base",
+  },
+  MEDIA: {
+    name: "gpt-4o-mini-2024-07-18",
+    maxTokens: 16000,
+    summaryTokens: 4000,
+    tokenizer: "cl100k_base",
+  },
 } as const;
 
-// Fix for encodingForModel type issue
-function trimPrompt(text: string, model: string): string {
+// -----------------------------
+// Zod Schemas for Validation
+// -----------------------------
+const FirecrawlResult = z.object({
+  success: z.boolean(),
+  data: z.array(
+    z.object({
+      url: z.string().url(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      content: z.string().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
+});
+
+const OpenAIMessage = z.object({
+  role: z.enum(["system", "user", "assistant"]),
+  content: z.string(),
+});
+
+const OpenAIResponse = z.object({
+  id: z.string(),
+  choices: z.array(
+    z.object({
+      message: OpenAIMessage,
+      finish_reason: z
+        .enum(["stop", "length", "content_filter", "tool_calls"])
+        .optional(),
+      index: z.number(),
+    }),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .optional(),
+});
+
+const QueryExpansionResponse = z.object({
+  queries: z.array(z.string()),
+  reasoning: z.string().optional(),
+  confidence: z.number().min(0).max(1),
+});
+
+const SufficiencyResponse = z.object({
+  isComplete: z.boolean(),
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string(),
+  suggestedNextSteps: z.array(z.string()).optional(),
+  analysis: z
+    .object({
+      coverage: z.number().min(0).max(1),
+      depth: z.number().min(0).max(1),
+      relevance: z.number().min(0).max(1),
+    })
+    .optional(),
+});
+
+// -----------------------------
+// Types & Interfaces
+// -----------------------------
+interface MediaContent {
+  type: "video" | "image";
+  url: string;
+  title?: string;
+  description?: string;
+  embedCode?: string;
+}
+
+interface ResearchContext {
+  query: string;
+  learnings: string[];
+  visitedUrls: string[];
+  clarifications: Record<string, string>;
+  media: MediaContent[];
+  currentDepth: number;
+  totalDepth: number;
+  currentBreadth: number;
+  totalBreadth: number;
+  processedQueries: number;
+  batchesInCurrentDepth: number;
+}
+
+interface ResearchProgressInfo {
+  breadthProgress?: {
+    current: number;
+    total: number;
+  };
+  completionConfidence?: number;
+  batchProgress?: {
+    current: number;
+    total: number;
+  };
+}
+
+type EnhancedProgress = ResearchProgress & ResearchProgressInfo;
+
+// -----------------------------
+// Helper: trimPrompt
+// -----------------------------
+function trimPrompt(
+  text: string,
+  modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
+): string {
   try {
-    let maxTokens = 8000; // default
-    // Adjust token limit based on the selected model.
-    switch (model) {
-      case MODEL_CONFIG.DEEP:
-        maxTokens = 128000;
-        break;
-      case MODEL_CONFIG.BALANCED:
-      case MODEL_CONFIG.MEDIA:
-      default:
-        maxTokens = 16000;
-        break;
-    }
-    // Use cl100k_base for all models as it's the most compatible
-    const enc = encodingForModel("gpt-4");
+    const enc = encodingForModel(modelConfig.tokenizer);
     const tokens = enc.encode(text);
-    if (tokens.length <= maxTokens) {
-      return text;
-    }
-    // Chunk text while preserving sentence boundaries.
-    const chunks: string[] = [];
-    let currentChunk = "";
+    if (tokens.length <= modelConfig.maxTokens) return text;
+    console.warn(
+      `Prompt exceeds token limit (${tokens.length} > ${modelConfig.maxTokens}) for model ${modelConfig.name}. Trimming prompt.`,
+    );
     const sentences = text.split(/(?<=[.!?])\s+/);
+    let trimmedText = "";
+    let currentTokens = 0;
     for (const sentence of sentences) {
-      const potentialChunk = currentChunk + sentence;
-      const chunkTokens = enc.encode(potentialChunk).length;
-      if (chunkTokens <= maxTokens) {
-        currentChunk = potentialChunk;
-      } else if (currentChunk) {
-        chunks.push(currentChunk);
-        currentChunk = sentence;
+      const candidateText = trimmedText
+        ? `${trimmedText} ${sentence}`
+        : sentence;
+      const candidateTokens = enc.encode(candidateText).length;
+      if (candidateTokens <= modelConfig.maxTokens) {
+        trimmedText = candidateText;
+        currentTokens = candidateTokens;
       } else {
-        // If a single sentence is too long, split by words.
-        const words = sentence.split(/\s+/);
-        for (const word of words) {
-          if (enc.encode(currentChunk + word).length <= maxTokens) {
-            currentChunk += (currentChunk ? " " : "") + word;
-          } else if (currentChunk) {
-            chunks.push(currentChunk);
-            currentChunk = word;
-          }
-        }
+        break;
       }
     }
-    if (currentChunk) {
-      chunks.push(currentChunk);
-    }
-    return chunks[0] || text.slice(0, Math.floor(maxTokens / 4));
+    console.warn(
+      `Trimmed prompt for ${modelConfig.name} from ${tokens.length} to ${currentTokens} tokens`,
+    );
+    return trimmedText;
   } catch (error) {
-    console.error("Error trimming prompt:", error);
+    console.error(`Error trimming prompt for ${modelConfig.name}:`, error);
     return text;
   }
 }
 
-// Update determineResearchParameters to use structured outputs
-async function determineResearchParameters(
-  query: string,
-): Promise<{ breadth: number; depth: number }> {
+// -----------------------------
+// Helper: getImageDimensions with Caching
+// -----------------------------
+async function getImageDimensions(
+  imageUrl: string,
+): Promise<{ width: number; height: number } | null> {
   try {
-    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
+    const cached = imageDimensionCache.get(imageUrl);
+    if (cached) {
+      console.log(`Using cached dimensions for ${imageUrl}`);
+      return cached;
+    }
+    console.log(`Fetching dimensions for ${imageUrl}`);
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      console.warn(
+        `Failed to fetch image ${imageUrl}: ${response.status} ${response.statusText}`,
+      );
+      return null;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const dimensions = sizeOf(buffer);
+    if (
+      !dimensions ||
+      typeof dimensions.width !== "number" ||
+      typeof dimensions.height !== "number"
+    ) {
+      console.warn(`Could not determine dimensions for ${imageUrl}`);
+      return null;
+    }
+    const result = { width: dimensions.width, height: dimensions.height };
+    imageDimensionCache.set(imageUrl, result);
+    return result;
+  } catch (error) {
+    console.error(`Error getting dimensions for ${imageUrl}:`, error);
+    return null;
+  }
+}
+
+// -----------------------------
+// Helper: analyzeImageWithVision
+// -----------------------------
+async function analyzeImageWithVision(
+  imageUrl: string,
+): Promise<{ isUseful: boolean; title?: string; description?: string }> {
+  try {
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
+      model: MODEL_CONFIG.MEDIA.name,
       messages: [
         {
           role: "system",
           content:
-            "You are an expert at determining optimal research parameters. Analyze the query complexity and scope to suggest appropriate breadth (2-10) and depth (1-5) values. Additional depth will allow for more refinement in queries to search recursively based on knowledge gained and more breadth will review more sources for each recursive query level.",
+            "You are a visual analysis assistant. Analyze the image and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
         },
         {
           role: "user",
-          content: `Given this research query: "${trimmedQuery}", determine optimal research settings. Consider:
-1. Query complexity and scope
-2. Need for diverse sources (affects breadth)
-3. Need for detailed exploration (affects depth)
-Respond in JSON format with keys "breadth" and "depth".`,
+          content: JSON.stringify({
+            prompt:
+              "Analyze this image and determine if it's useful for research purposes:",
+            image_url: imageUrl,
+          }),
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "research_parameters",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              breadth: { type: "number" },
-              depth: { type: "number" },
-            },
-            required: ["breadth", "depth"],
-            additionalProperties: false,
-          },
-        },
-      },
+      response_format: { type: "json_object" },
+      max_tokens: 150,
     });
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) {
-      console.log(
-        "Invalid AI response for parameter determination, using defaults",
-      );
-      return { breadth: 4, depth: 2 };
-    }
-    const params = JSON.parse(content);
-    return {
-      breadth: Math.min(Math.max(Math.round(params.breadth), 2), 10),
-      depth: Math.min(Math.max(Math.round(params.depth), 1), 5),
-    };
+    if (!content || !content.trim().startsWith("{")) return { isUseful: false };
+    return JSON.parse(content);
   } catch (error) {
-    console.error("Error determining research parameters:", error);
-    return { breadth: 4, depth: 2 };
+    console.error("Vision analysis error for", imageUrl, error);
+    return { isUseful: false };
   }
 }
 
-// Generate clarifying questions using Structured Outputs.
-// We use the BALANCED model and a json_schema response format to enforce valid JSON.
+// -----------------------------
+// Helper: detectMediaContent
+// -----------------------------
+async function detectMediaContent(url: string): Promise<MediaContent[]> {
+  if (!url) {
+    console.warn("Received empty URL in detectMediaContent");
+    return [];
+  }
+  try {
+    const html = await fetchWithTimeout(url, 5000);
+    const mediaContent: MediaContent[] = [];
+    // Process YouTube videos
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeMatches = html.matchAll(youtubeRegex);
+    for (const match of Array.from(youtubeMatches)) {
+      const videoId = match[1];
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`Validating YouTube video: ${videoUrl}`);
+      if (await isYouTubeVideoValid(videoUrl)) {
+        mediaContent.push({
+          type: "video",
+          url: videoUrl,
+          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+        });
+        console.log(`Added valid YouTube video: ${videoUrl}`);
+      } else {
+        console.log(`Skipped invalid YouTube video: ${videoUrl}`);
+      }
+    }
+    // Process images
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = html.matchAll(imgRegex);
+    const imageUrls: string[] = [];
+    for (const match of Array.from(imgMatches)) {
+      let imgUrl = match[1];
+      if (!imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        console.log(`Skipping non-image URL: ${imgUrl}`);
+        continue;
+      }
+      if (imgUrl.includes("icon") || imgUrl.includes("logo")) {
+        console.log(`Skipping icon/logo image: ${imgUrl}`);
+        continue;
+      }
+      if (imgUrl.startsWith("/")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+        console.log(`Converted relative URL to absolute: ${imgUrl}`);
+      } else if (!imgUrl.startsWith("http")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
+        console.log(`Added protocol and host to URL: ${imgUrl}`);
+      }
+      imageUrls.push(imgUrl);
+    }
+    console.log(`Found ${imageUrls.length} potential images to analyze`);
+    const imageAnalysisPromises = imageUrls.map(async (imgUrl) => {
+      try {
+        console.log(`Analyzing image: ${imgUrl}`);
+        const analysis = await analyzeImageWithVision(imgUrl);
+        if (analysis.isUseful) {
+          const dimensions = await getImageDimensions(imgUrl);
+          if (
+            dimensions &&
+            dimensions.width >= 400 &&
+            dimensions.width <= 2500
+          ) {
+            console.log(
+              `Adding useful image: ${imgUrl} (${dimensions.width}x${dimensions.height})`,
+            );
+            return {
+              type: "image",
+              url: imgUrl,
+              title: analysis.title,
+              description: analysis.description,
+            };
+          } else {
+            console.log(`Skipping image due to dimensions: ${imgUrl}`);
+          }
+        } else {
+          console.log(`Skipping non-useful image: ${imgUrl}`);
+        }
+      } catch (error) {
+        console.error(`Error processing image ${imgUrl}:`, error);
+      }
+      return null;
+    });
+    const analyzedImages = await Promise.all(imageAnalysisPromises);
+    const validImages = analyzedImages.filter(
+      (img): img is MediaContent => img !== null,
+    );
+    mediaContent.push(...validImages);
+    console.log(
+      `Successfully processed ${mediaContent.length} media items from ${url}`,
+    );
+    return mediaContent;
+  } catch (error) {
+    console.error(`Error detecting media content from ${url}:`, error);
+    return [];
+  }
+}
+
+// -----------------------------
+// Helper: processBatchFindings
+// -----------------------------
+async function processBatchFindings(
+  findings: string[],
+  modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
+  context: ResearchContext,
+): Promise<string[]> {
+  try {
+    if (findings.length === 0) {
+      console.log("Skipping batch processing - no findings to process");
+      return [];
+    }
+    const batchSize = 10;
+    const processedFindings: string[] = [];
+    const totalBatches = Math.ceil(findings.length / batchSize);
+    context.batchesInCurrentDepth = totalBatches;
+    console.log(
+      `Processing ${findings.length} findings in ${totalBatches} batches`,
+    );
+    for (let i = 0; i < findings.length; i += batchSize) {
+      const currentBatch = Math.floor(i / batchSize) + 1;
+      console.log(`Processing batch ${currentBatch}/${totalBatches}`);
+      const batch = findings.slice(i, i + batchSize);
+      const batchText = batch.join("\n\n");
+      const trimmedBatch = trimPrompt(batchText, modelConfig);
+      const response = await openai.chat.completions.create({
+        model: modelConfig.name,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Summarize and combine related findings into coherent insights.",
+          },
+          { role: "user", content: trimmedBatch },
+        ],
+        max_tokens: modelConfig.summaryTokens,
+      });
+      const summary = response.choices[0]?.message?.content;
+      if (summary) {
+        processedFindings.push(summary);
+        console.log(
+          `Batch ${currentBatch}: Successfully processed ${batch.length} findings`,
+        );
+      } else {
+        console.warn(`Batch ${currentBatch}: No summary generated`);
+      }
+    }
+    console.log(
+      `Finished processing all batches. Generated ${processedFindings.length} summaries`,
+    );
+    return processedFindings;
+  } catch (error) {
+    console.error("Error processing batch findings:", error);
+    return findings;
+  }
+}
+
+// -----------------------------
+// Helper: expandQuery
+// -----------------------------
+async function expandQuery(context: ResearchContext): Promise<string[]> {
+  try {
+    const modelConfig = MODEL_CONFIG.BALANCED;
+    const trimmedContext = {
+      query: context.query,
+      learnings: context.learnings.slice(-5),
+      clarifications: context.clarifications,
+      progress: {
+        currentDepth: context.currentDepth,
+        totalDepth: context.totalDepth,
+        currentBreadth: context.currentBreadth,
+        processedQueries: context.processedQueries,
+      },
+    };
+    const response = await openai.chat.completions.create({
+      model: modelConfig.name,
+      messages: [
+        {
+          role: "system",
+          content: `Generate follow-up queries based on current findings and gaps in knowledge.
+Consider depth ${context.currentDepth + 1}/${context.totalDepth} when generating queries.
+Return a JSON object with:
+- queries: array of strings (new queries to investigate)
+- reasoning: optional string explaining query selection`,
+        },
+        { role: "user", content: JSON.stringify(trimmedContext) },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.warn("Empty response from OpenAI for query expansion");
+      return [];
+    }
+    try {
+      const parsedResponse = JSON.parse(content);
+      const validatedResponse = QueryExpansionResponse.parse(parsedResponse);
+      if (validatedResponse.reasoning) {
+        console.log("Query expansion reasoning:", validatedResponse.reasoning);
+      }
+      return validatedResponse.queries;
+    } catch (parseError) {
+      console.error(
+        "Failed to parse or validate query expansion response:",
+        parseError,
+      );
+      console.error("Raw response:", content);
+      return [];
+    }
+  } catch (error) {
+    console.error("Error in expandQuery:", error);
+    return [];
+  }
+}
+
+// -----------------------------
+// Helper: isResearchSufficient
+// -----------------------------
+async function isResearchSufficient(
+  context: ResearchContext,
+): Promise<z.infer<typeof SufficiencyResponse>> {
+  try {
+    const modelConfig = MODEL_CONFIG.BALANCED;
+    const trimmedContext = {
+      query: context.query,
+      learnings: context.learnings,
+      clarifications: context.clarifications,
+      progress: {
+        currentDepth: context.currentDepth,
+        totalDepth: context.totalDepth,
+        currentBreadth: context.currentBreadth,
+        totalBreadth: context.totalBreadth,
+        totalFindings: context.learnings.length,
+        processedQueries: context.processedQueries,
+        batchesProcessed: context.batchesInCurrentDepth,
+      },
+    };
+    const response = await openai.chat.completions.create({
+      model: modelConfig.name,
+      messages: [
+        {
+          role: "system",
+          content: `Analyze if the user context provided is sufficient to answer the original query.
+Consider:
+- Coverage of key aspects
+- Depth of analysis
+- Quality of sources
+- Consistency of findings
+Return a JSON object with:
+- isComplete: boolean
+- confidence: number (0-1)
+- reasoning: string
+- suggestedNextSteps: optional array of strings`,
+        },
+        { role: "user", content: JSON.stringify(trimmedContext) },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+    });
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.warn("Empty response from OpenAI for sufficiency check");
+      return {
+        isComplete: false,
+        confidence: 0,
+        reasoning: "No response received",
+      };
+    }
+    try {
+      const parsedResponse = JSON.parse(content);
+      const validatedResponse = SufficiencyResponse.parse(parsedResponse);
+      console.log("Research sufficiency check:", {
+        isComplete: validatedResponse.isComplete,
+        confidence: validatedResponse.confidence,
+        reasoning: validatedResponse.reasoning,
+      });
+      if (validatedResponse.suggestedNextSteps?.length > 0) {
+        console.log(
+          "Suggested next steps:",
+          validatedResponse.suggestedNextSteps,
+        );
+      }
+      return validatedResponse;
+    } catch (parseError) {
+      console.error(
+        "Failed to parse or validate sufficiency check response:",
+        parseError,
+      );
+      console.error("Raw response:", content);
+      return {
+        isComplete: false,
+        confidence: 0,
+        reasoning: "Failed to parse response",
+      };
+    }
+  } catch (error) {
+    console.error("Error in isResearchSufficient:", error);
+    return {
+      isComplete: false,
+      confidence: 0,
+      reasoning: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// -----------------------------
+// Helper: generateClarifyingQuestions
+// -----------------------------
 async function generateClarifyingQuestions(query: string): Promise<string[]> {
   try {
     const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
+      model: MODEL_CONFIG.BALANCED.name,
       messages: [
         {
           role: "system",
           content:
-            "You are a research assistant tasked with generating clarifying questions to refine research queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema. Do not include any additional commentary, whitespace, or HTML. Output only valid JSON.",
+            "Generate clarifying questions to refine queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema.",
         },
         {
           role: "user",
@@ -160,24 +598,19 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
         },
       ],
       response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "clarifying_questions",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              questions: {
-                type: "array",
-                items: { type: "string" },
-              },
+        type: "json_object",
+        schema: {
+          type: "object",
+          properties: {
+            questions: {
+              type: "array",
+              items: { type: "string" },
             },
-            required: ["questions"],
-            additionalProperties: false,
           },
+          required: ["questions"],
         },
       },
-      max_completion_tokens: 1500,
+      max_tokens: 1500,
     });
     const content = response.choices[0]?.message?.content;
     if (!content || !content.trim().startsWith("{")) {
@@ -199,444 +632,9 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
   }
 }
 
-// Determine report structure by asking the model for candidate outlines.
-// We use the BALANCED model and instruct it to return multiple candidates separated by a delimiter.
-async function determineReportStructure(
-  query: string,
-  learnings: string[],
-): Promise<string> {
-  try {
-    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
-    const trimmedLearnings = learnings
-      .map((l) => l.slice(0, 100))
-      .join("\n")
-      .slice(0, 500);
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert at determining optimal content structures. Analyze the query and sample findings to suggest multiple content structures. Each option should be a list of section headings tailored to the content. Separate options with '###'.",
-        },
-        {
-          role: "user",
-          content: `Given this research query: "${trimmedQuery}" and sample findings:\n${trimmedLearnings}\n\nGenerate 3 content structure candidates. Return them separated by "###", then choose the best candidate and output only that structure.`,
-        },
-      ],
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
-    }
-    const candidates = content
-      .split("###")
-      .map((c) => c.trim())
-      .filter((c) => c);
-    if (candidates.length === 0) {
-      return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
-    }
-    // Choose the candidate with the most sections.
-    return candidates.reduce((a, b) =>
-      a.split("\n").length > b.split("\n").length ? a : b,
-    );
-  } catch (error) {
-    console.error("Error determining report structure:", error);
-    return "Executive Summary\nKey Findings\nDetailed Analysis\nConclusion\nSources";
-  }
-}
-
-// Determine the optimal model type based on the query and volume of learnings.
-// Since we have removed FAST mode, we only decide between BALANCED and DEEP.
-async function determineModelType(
-  query: string,
-  learnings?: string[],
-): Promise<keyof typeof MODEL_CONFIG> {
-  try {
-    // If there is a very large volume of learnings, use DEEP mode.
-    if (learnings && learnings.length > 100) {
-      return "DEEP";
-    }
-    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert at determining optimal AI model selection based on query complexity and research data volume. Choose between BALANCED and DEEP modes based on the following criteria:\n\nBALANCED: For multi-faceted topics with moderate complexity and data volume.\nDEEP: For complex technical topics or when there are many findings requiring extensive context or logic or reasoning.",
-        },
-        {
-          role: "user",
-          content: `Given this research query: "${trimmedQuery}" and a total of ${
-            learnings?.length || 0
-          } findings, respond with exactly one option: "BALANCED" or "DEEP".`,
-        },
-      ],
-    });
-    const content = response.choices[0]?.message?.content?.trim().toUpperCase();
-    if (content && content in MODEL_CONFIG) {
-      return content as keyof typeof MODEL_CONFIG;
-    }
-    return "BALANCED";
-  } catch (error) {
-    console.error("Error determining model type:", error);
-    return "BALANCED";
-  }
-}
-
-// Add media detection functionality
-interface MediaContent {
-  type: "video" | "image";
-  url: string;
-  title?: string;
-  description?: string;
-  embedCode?: string;
-}
-
-interface AnalyzedImage {
-  url: string;
-  isUseful: boolean;
-  title?: string;
-  description?: string;
-}
-
-// Add new helper function for batch image analysis
-async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]> {
-  try {
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content: "You are a precise JSON generator for vision analysis. Your response must be ONLY valid JSON, with no additional text, comments, or formatting. The JSON must follow this exact schema: { \"images\": [ { \"url\": string, \"isUseful\": boolean, \"title\": string, \"description\": string } ] }. Do not include any explanations or markdown formatting.",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Analyze these images and determine which ones could be useful for research purposes. Respond with ONLY valid JSON:\n${JSON.stringify(urls)}`,
-            }
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.error("Empty response from vision analysis");
-      return urls.map(url => ({ url, isUseful: false }));
-    }
-
-    let parsedContent;
-    try {
-      parsedContent = JSON.parse(content);
-
-      if (!Array.isArray(parsedContent.images)) {
-        console.error("Invalid response structure from vision analysis:", content);
-        return urls.map(url => ({ url, isUseful: false }));
-      }
-
-      // Additional validation of the parsed content
-      const isValidImage = (img: any): img is AnalyzedImage => {
-        return typeof img.url === 'string' &&
-               typeof img.isUseful === 'boolean' &&
-               (!img.title || typeof img.title === 'string') &&
-               (!img.description || typeof img.description === 'string');
-      };
-
-      const validImages = parsedContent.images.filter(isValidImage);
-      if (validImages.length === 0) {
-        console.error("No valid image analysis results found");
-        return urls.map(url => ({ url, isUseful: false }));
-      }
-
-      return validImages;
-    } catch (error) {
-      console.error("Failed to parse vision analysis response:", error);
-      console.error("Raw response content:", content);
-      return urls.map(url => ({ url, isUseful: false }));
-    }
-  } catch (error) {
-    console.error("Error in batch vision analysis:", error);
-    return urls.map(url => ({ url, isUseful: false }));
-  }
-}
-
-
-// Update detectMediaContent to use batch processing
-async function detectMediaContent(url: string): Promise<MediaContent[]> {
-  if (!url) {
-    console.warn("Received empty URL in detectMediaContent");
-    return [];
-  }
-
-  try {
-    // Use our new utility to fetch HTML with a 5-second timeout
-    const html = await fetchWithTimeout(url, 5000);
-    const mediaContent: MediaContent[] = [];
-
-    // Process YouTube videos (existing code remains unchanged)
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
-
-    for (const match of youtubeMatches) {
-      const videoId = match[1];
-      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-      const isValid = await isYouTubeVideoValid(videoUrl);
-      if (isValid) {
-        mediaContent.push({
-          type: "video",
-          url: videoUrl,
-          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-        });
-      }
-    }
-
-    // Enhanced batch image detection
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = Array.from(html.matchAll(imgRegex));
-    const imageUrls: string[] = [];
-
-    // Collect and normalize image URLs
-    for (const match of imgMatches) {
-      let imgUrl = match[1];
-      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
-
-      // Skip images with undesired keywords
-      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
-        continue;
-      }
-
-      // Handle relative URLs
-      if (imgUrl.startsWith("/")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-      } else if (!imgUrl.startsWith("http")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
-      }
-
-      imageUrls.push(imgUrl);
-    }
-
-    // Batch analyze images with vision model
-    if (imageUrls.length > 0) {
-      const analyzedImages = await analyzeImagesWithVision(imageUrls);
-
-      // Only check dimensions for useful images
-      for (const image of analyzedImages) {
-        if (image.isUseful) {
-          try {
-            const dimensions = await getImageDimensions(image.url);
-            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
-              mediaContent.push({
-                type: "image",
-                url: image.url,
-                title: image.title,
-                description: image.description,
-              });
-            }
-          } catch (error) {
-            console.error("Error processing image dimensions:", image.url, error);
-          }
-        }
-      }
-    }
-
-    return mediaContent;
-  } catch (error) {
-    console.error("Error detecting media content:", error);
-    return [];
-  }
-}
-
-// New helper function for getting image dimensions
-async function getImageDimensions(
-  imageUrl: string,
-): Promise<{ width: number; height: number } | null> {
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const dimensions = sizeOf(buffer);
-
-    if (
-      !dimensions ||
-      typeof dimensions.width !== "number" ||
-      typeof dimensions.height !== "number"
-    ) {
-      return null;
-    }
-
-    return {
-      width: dimensions.width,
-      height: dimensions.height,
-    };
-  } catch (error) {
-    console.error("Error getting image dimensions for", imageUrl, error);
-    return null;
-  }
-}
-
-// New helper function for vision analysis
-async function analyzeImageWithVision(imageUrl: string): Promise<{
-  isUseful: boolean;
-  title?: string;
-  description?: string;
-}> {
-  try {
-    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Analyze this image and determine if it's useful for research purposes:",
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageUrl,
-              },
-            },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 150,
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) {
-      return { isUseful: false };
-    }
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("Vision analysis error for", imageUrl, error);
-    return { isUseful: false };
-  }
-}
-
-// Update researchQuery to include media content
-async function researchQuery(
-  query: string,
-): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
-  try {
-    console.log("Starting search for query:", query);
-    const searchResults = await firecrawl.search(query, {
-      limit: 5,
-      wait: true,
-      timeout: 30000,
-    });
-
-    if (!searchResults?.success || !Array.isArray(searchResults.data)) {
-      return {
-        findings: ["No relevant information found."],
-        urls: [],
-        media: [],
-      };
-    }
-
-    // Filter out undefined URLs and ensure string type
-    const urls = searchResults.data
-      .map((result) => result.url)
-      .filter((url): url is string => typeof url === 'string');
-
-    const mediaPromises = urls.map((url) => detectMediaContent(url));
-    const mediaResults = await Promise.all(mediaPromises);
-    const allMedia = mediaResults.flat();
-
-    // Include media information in the context for AI analysis
-    const context = searchResults.data
-      .map((result, index) => {
-        const mediaForUrl = mediaResults[index];
-        return `${result.title}\n${result.description}\n${
-          mediaForUrl.length > 0
-            ? `Related media: ${mediaForUrl
-                .map((m) => `${m.type.toUpperCase()}: ${m.url}`)
-                .join("\n")}`
-            : ""
-        }`;
-      })
-      .filter((text) => text.length > 0)
-      .join("\n\n");
-
-    if (!context) {
-      return {
-        findings: ["No relevant information found."],
-        urls: [],
-        media: [],
-      };
-    }
-
-    const trimmedContext = trimPrompt(context, MODEL_CONFIG.MEDIA);
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Analyze the following information including any media content. For videos and images, evaluate their relevance and potential value based on the user message. Include specific references to media content in your findings when appropriate.",
-        },
-        {
-          role: "user",
-          content: `Analyze this research data and provide key findings about '${query}', including relevant media content:\n\n${trimmedContext}\n\nFindings:`,
-        },
-      ],
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      return {
-        findings: ["Error analyzing research data."],
-        urls,
-        media: allMedia,
-      };
-    }
-
-    const findings = content
-      .split("\n")
-      .map((line) => line.replace(/^[-•*]|\d+\.\s*/, "").trim())
-      .filter((f) => f.length > 0);
-
-    return {
-      findings:
-        findings.length > 0
-          ? findings
-          : ["Analysis completed but no clear findings extracted."],
-      urls,
-      media: allMedia,
-    };
-  } catch (error) {
-    console.error("Error researching query:", error);
-    return {
-      findings: [
-        `Error while researching: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      ],
-      urls: [],
-      media: [],
-    };
-  }
-}
-
-// Update formatReport to include media content
+// -----------------------------
+// Helper: formatReport
+// -----------------------------
 async function formatReport(
   query: string,
   learnings: string[],
@@ -644,280 +642,315 @@ async function formatReport(
   media: MediaContent[],
 ): Promise<string> {
   try {
-    const isRankingQuery = /top|best|ranking|rated|popular|versus|vs\./i.test(
+    const modelConfig = MODEL_CONFIG.DEEP;
+    const context = {
       query,
-    );
-    const modelType = "DEEP"; // Always use MEDIA model for final report
-    const model = MODEL_CONFIG[modelType];
-
-    const maxCompletionTokens = modelType === "DEEP" ? 12000 : 6000;
-
-    const trimmedQuery = trimPrompt(query, model);
-    const trimmedLearnings = learnings.map((l) => trimPrompt(l, model));
-    const trimmedVisitedUrls = visitedUrls.map((url) => trimPrompt(url, model));
-
-    // Format media content for the AI
-    const mediaContext = media
-      .map(
-        (m) =>
-          `${m.type.toUpperCase()}: ${m.url}${m.title ? ` - ${m.title}` : ""}${m.description ? `\nDescription: ${m.description}` : ""}`,
-      )
-      .join("\n\n");
-
-    const reportStructure = await determineReportStructure(query, learnings);
-
+      learnings: learnings.slice(-50),
+      sources: visitedUrls,
+      mediaContent: media.map((m) => ({
+        type: m.type,
+        url: m.url,
+        title: m.title || undefined,
+        description: m.description || undefined,
+      })),
+    };
     const response = await openai.chat.completions.create({
-      model,
+      model: modelConfig.name,
       messages: [
         {
           role: "system",
-          content: `You are creating a comprehensive piece of content that incorporates both textual findings and rich media content. Use markdown to expertly craft the content, with markdown formatting for footnotes to sources, with markdown tables and markdown for media where appropriate within your output. Generate a verbose output (at least 3000 tokens if the context permits). When referencing media content:
-          - For videos: Include them as embedded content using provided embed codes or as markdown links
-          - For images: Include them using markdown image syntax
-          - For other media types: Include them as markdown links
-          - For sources: use footnotes to reference the source
-          - For comparisons: include a markdown table if appropriate for the context
-          Important Rules to Always Follow. Structure the content you generate to flow naturally. Adjust your style including voice and tone based on what the user is seeking. Use the findings and media content provided by the user combined with your mastery of content architecture and adaptive writing styles to deliver an incredible work product comprised of the appropriate mix of media images sources videos. Pay attention to the structure requested by the user and try to adhere to it with deviations only to increase your adherence to your guidelines thus far.`,
+          content: `Generate an engaging content piece encompassing your vast knowledge and given findings to thoroughly answer the users explicit and implicit question, to engage them in the topic and wow them with your capabilities while adhering to these guidelines:
+- Use markdown formatting for structure and content
+- Use headings to organize sections
+- Incorporate a section for key findings near the beginning
+- Use writing style that is appropriate given the context of the query
+- Use tabular data to display findings where relevant
+- Incorporate media references where relevant
+- Use markdown formatting for structure
+- Cite sources using footnotes
+- Conclude with key insights and recommendations
+- Do not include place holders for the query, learnings, sources, mdeia, or any other information
+- Focus on relevance and engagment
+- Include a sources section`,
         },
-        {
-          role: "user",
-          content: `Create a detailed piece of content about "${trimmedQuery}" using the following findings and media content:
-            Findings:
-            ${trimmedLearnings.join("\n")}
-            Available Media Content:
-            ${mediaContext}
-            Follow this structure:
-            ${reportStructure}
-            Include a comprehensive Sources section with these URLs:
-            ${trimmedVisitedUrls.join("\n")}
-            ${isRankingQuery ? "Ensure rankings are clearly numbered with detailed explanations for each item." : "Provide extensive analysis and insights throughout each section."}
-            Important: Integrate relevant media content naturally within the report where it adds value to the discussion.
-            Important: Modify the structure including content title, headings, subheadings and section titles to make them flow most naturally within the content as needed and always keep these modifications aligned to what the content is about.`,
-        },
+        { role: "user", content: JSON.stringify(context) },
       ],
-      max_completion_tokens: maxCompletionTokens,
+      max_tokens: modelConfig.maxTokens - 1000,
     });
-
-    let report =
-      response.choices[0]?.message?.content || "Error generating report";
-
-    // Post-process the report to ensure proper media embedding
-    media.forEach((m) => {
-      if (m.type === "video" && m.embedCode) {
-        // Handle both watch and embed URLs
-        const videoUrlPatterns = [
-          new RegExp(`\\[.*?\\]\\(${m.url}\\)`, "g"), // Markdown link format
-          new RegExp(m.url, "g"), // Plain URL
-          new RegExp(m.url.replace("watch?v=", "embed/"), "g"), // Embed URL format
-        ];
-
-        videoUrlPatterns.forEach((pattern) => {
-          report = report.replace(pattern, "\n\n" + m.embedCode + "\n\n");
-        });
-      }
-    });
-
-    // Clean up any remaining plain YouTube URLs by converting them to markdown links
-    report = report.replace(
-      /https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/g,
-      "[$&]($&)",
-    );
-
+    const report = response.choices[0]?.message?.content;
+    if (!report) throw new Error("Failed to generate report content");
     return report;
   } catch (error) {
     console.error("Error formatting report:", error);
-    return "Error generating research report";
+    return `Error generating content: ${error instanceof Error ? error.message : "Unknown error"}
+
+## Raw Findings
+${learnings.join("\n\n")}
+
+## Sources
+${visitedUrls.join("\n")}`;
   }
 }
 
-// Generate follow-up queries for a given query using the BALANCED model.
-async function expandQuery(query: string): Promise<string[]> {
+// -----------------------------
+// Progress Tracking Helpers
+// -----------------------------
+interface ProgressMetrics {
+  currentDepth: number;
+  totalDepth: number;
+  currentBreadth: number;
+  totalBreadth: number;
+  processedQueries: number;
+  totalQueriesProcessed: number;
+  currentBatchProgress: number;
+  totalBatches: number;
+  confidence: number;
+}
+
+function calculateProgressMetrics(context: ResearchContext): ProgressMetrics {
+  return {
+    currentDepth: context.currentDepth,
+    totalDepth: context.totalDepth,
+    currentBreadth: context.currentBreadth,
+    totalBreadth: context.totalBreadth,
+    processedQueries: context.processedQueries,
+    totalQueriesProcessed: context.processedQueries,
+    currentBatchProgress: context.batchesInCurrentDepth,
+    totalBatches: Math.ceil(context.learnings.length / 10),
+    confidence: 0,
+  };
+}
+
+function constructProgressUpdate(
+  context: ResearchContext,
+  status: "IN_PROGRESS" | "COMPLETED" | "ERROR",
+  metrics: ProgressMetrics,
+  report?: string,
+  error?: string,
+): EnhancedProgress {
+  return {
+    status,
+    currentQuery:
+      context.learnings[context.learnings.length - 1] || context.query,
+    learnings: context.learnings,
+    progress: context.currentDepth,
+    totalProgress: context.totalDepth,
+    visitedUrls: context.visitedUrls,
+    media: context.media,
+    breadthProgress: {
+      current: metrics.currentBreadth,
+      total: metrics.totalBreadth,
+    },
+    completionConfidence: metrics.confidence,
+    batchProgress: {
+      current: metrics.currentBatchProgress,
+      total: metrics.totalBatches,
+    },
+    ...(report ? { report } : {}),
+    ...(error ? { error } : {}),
+  };
+}
+
+function updateResearchContext(
+  context: ResearchContext,
+  updates: Partial<ResearchContext>,
+): ResearchContext {
+  return {
+    ...context,
+    ...updates,
+    processedQueries:
+      updates.processedQueries !== undefined
+        ? updates.processedQueries
+        : context.processedQueries + (updates.currentBreadth || 0),
+    batchesInCurrentDepth:
+      updates.batchesInCurrentDepth !== undefined
+        ? updates.batchesInCurrentDepth
+        : context.batchesInCurrentDepth,
+  };
+}
+
+// -----------------------------
+// New Implementation: researchQuery
+// -----------------------------
+async function researchQuery(
+  query: string,
+): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
-    const trimmedQuery = trimPrompt(query, MODEL_CONFIG.BALANCED);
-    const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.BALANCED,
-      messages: [
-        {
-          role: "user",
-          content: `Generate 3 follow-up questions to research this topic: ${trimmedQuery}\nFormat: Numbered list 1., 2., 3.`,
-        },
-      ],
-    });
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.error("Invalid response from OpenAI:", response);
-      return [];
-    }
-    return content
-      .split("\n")
-      .map((line) => line.replace(/^\d+\.\s*/, ""))
-      .filter((q) => q.length > 0)
-      .slice(0, 3);
+    console.log("Performing research query:", query);
+    // Use Firecrawl to perform the search
+    const fcResult = await firecrawl.search({ query });
+    const parsedResult = FirecrawlResult.parse(fcResult);
+    const findings = parsedResult.data
+      .map((item) => item.content || "")
+      .filter((content) => content.trim() !== "");
+    const urls = parsedResult.data.map((item) => item.url);
+    // Media processing could be extended here if desired.
+    const media: MediaContent[] = [];
+    return { findings, urls, media };
   } catch (error) {
-    console.error("Error expanding query:", error);
-    return [];
+    console.error("Error in researchQuery for query:", query, error);
+    return { findings: [], urls: [], media: [] };
   }
 }
 
+// -----------------------------
+// Main Research Handler: handleResearch
+// -----------------------------
 async function handleResearch(
   research: Research,
   ws: WebSocket,
   onComplete?: (report: string, visitedUrls: string[]) => Promise<void>,
 ) {
-  const sendProgress = (progress: ResearchProgress) => {
+  const sendProgress = (progress: EnhancedProgress) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(progress));
     }
   };
 
   try {
-    console.log(
-      `Starting research in ${research.fastMode ? "Quick Hunt" : "Deep Hunt"} mode`,
-    );
-
-    // Always use fixed minimal parameters for fast mode
-    const parameters = research.fastMode
-      ? { breadth: 1, depth: 1 }
-      : await determineResearchParameters(research.query);
-
-    // Calculate total steps for progress tracking
-    const totalSteps = research.fastMode ? 4 : parameters.breadth * parameters.depth;
-    console.log(
-      `Research parameters: breadth=${parameters.breadth}, depth=${parameters.depth}, mode=${research.fastMode ? "Quick Hunt" : "Deep Hunt"}`,
-    );
-
-    const autoResearch = { ...research, ...parameters };
-    const allLearnings: string[] = [];
-    const visitedUrls: string[] = [];
-    const allMedia: MediaContent[] = [];
-    let currentStep = 0;
-
-    // Initial progress update
-    sendProgress({
-      status: "IN_PROGRESS",
-      currentQuery: autoResearch.query,
+    let context: ResearchContext = {
+      query: research.query,
       learnings: [],
-      progress: currentStep,
-      totalProgress: totalSteps,
       visitedUrls: [],
+      clarifications: research.clarifications || {},
       media: [],
+      currentDepth: 0,
+      totalDepth: research.fastMode ? 2 : 5,
+      currentBreadth: 0,
+      totalBreadth: research.fastMode ? 3 : 8,
+      processedQueries: 0,
+      batchesInCurrentDepth: 0,
+    };
+
+    let currentQueries = [context.query];
+    let completionConfidence = 0;
+
+    console.log("Starting research:", {
+      query: research.query,
+      fastMode: research.fastMode,
+      maxDepth: context.totalDepth,
+      maxBreadth: context.totalBreadth,
     });
 
-    let currentQueries = [autoResearch.query];
-    for (let d = 0; d < autoResearch.depth; d++) {
-      // For each depth level, process all current queries concurrently up to the specified breadth
-      const queriesToProcess = currentQueries.slice(0, autoResearch.breadth);
+    while (context.currentDepth < context.totalDepth) {
+      const queries = currentQueries.slice(0, context.totalBreadth);
+      context = updateResearchContext(context, {
+        currentBreadth: queries.length,
+      });
 
-      // Map each query to a promise that processes the query
-      const promises = queriesToProcess.map(async (query) => {
-        // Update progress before starting each query
-        currentStep++;
-        sendProgress({
-          status: "IN_PROGRESS",
-          currentQuery: query,
-          learnings: allLearnings,
-          progress: currentStep,
-          totalProgress: totalSteps,
-          visitedUrls,
-          media: allMedia,
-        });
+      console.log(
+        `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
+      );
 
-        // Process the query concurrently
-        const result = await researchQuery(query);
+      const results = await Promise.all(
+        queries.map(async (query) => {
+          console.log(`Executing query: ${query}`);
+          return await researchQuery(query);
+        }),
+      );
 
-        // If not in fast mode and if this is not the final depth,
-        // generate follow-up queries concurrently
-        let followUpQueries: string[] = [];
-        if (!research.fastMode && d < autoResearch.depth - 1) {
-          followUpQueries = await expandQuery(query);
+      let newFindings = 0;
+      for (const result of results) {
+        const processedFindings = await processBatchFindings(
+          result.findings,
+          MODEL_CONFIG.BALANCED,
+          context,
+        );
+        newFindings += processedFindings.length;
+        context.learnings.push(...processedFindings);
+        context.visitedUrls.push(...result.urls);
+        context.media.push(...result.media);
+      }
+
+      context = updateResearchContext(context, {
+        processedQueries: context.processedQueries + queries.length,
+      });
+
+      console.log(
+        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
+      );
+
+      const metrics = calculateProgressMetrics(context);
+      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
+
+      const sufficientResponse = await isResearchSufficient(context);
+      completionConfidence = sufficientResponse.confidence;
+
+      if (
+        sufficientResponse.isComplete &&
+        sufficientResponse.confidence >= 0.8
+      ) {
+        console.log(
+          `Research deemed sufficient with ${(sufficientResponse.confidence * 100).toFixed(1)}% confidence`,
+        );
+        console.log("Reasoning:", sufficientResponse.reasoning);
+        break;
+      }
+
+      if (context.currentDepth < context.totalDepth - 1) {
+        currentQueries = await expandQuery(context);
+        if (currentQueries.length === 0) {
+          console.log("No more queries to expand, stopping iteration");
+          break;
         }
-        return { result, followUpQueries };
-      });
+        console.log(
+          `Generated ${currentQueries.length} follow-up queries for next depth`,
+        );
+      }
 
-      // Await all queries in parallel
-      const results = await Promise.all(promises);
-
-      // Process each result and aggregate learnings, URLs, media, and next queries
-      const newQueries: string[] = [];
-      results.forEach(({ result, followUpQueries }) => {
-        const { findings, urls, media } = result;
-        allLearnings.push(...findings);
-        visitedUrls.push(...urls.filter(Boolean));
-        allMedia.push(...media);
-        newQueries.push(...followUpQueries);
-      });
-
-      // Set up next depth level with the new queries generated
-      currentQueries = newQueries;
-    }
-
-    // Update progress before report generation
-    if (research.fastMode) {
-      currentStep++;
-      sendProgress({
-        status: "IN_PROGRESS",
-        currentQuery: "Generating final report...",
-        learnings: allLearnings,
-        progress: currentStep,
-        totalProgress: totalSteps,
-        visitedUrls,
-        media: allMedia,
+      context = updateResearchContext(context, {
+        currentDepth: context.currentDepth + 1,
+        currentBreadth: 0,
+        batchesInCurrentDepth: 0,
       });
     }
 
-    console.log("Generating final report with:", {
-      queryCount: allLearnings.length,
-      learnings: allLearnings,
-      urlCount: visitedUrls.length,
-      mediaCount: allMedia.length,
-      mode: research.fastMode ? "Quick Hunt" : "Deep Hunt",
-    });
-
-    const formattedReport = await formatReport(
-      autoResearch.query,
-      allLearnings,
-      visitedUrls,
-      allMedia,
+    console.log("Generating final report");
+    const report = await formatReport(
+      context.query,
+      context.learnings,
+      context.visitedUrls,
+      context.media,
     );
 
     if (onComplete) {
-      console.log("Calling onComplete callback with report and URLs");
-      await onComplete(formattedReport, visitedUrls);
+      await onComplete(report, context.visitedUrls);
     }
 
-    // Final progress update
-    currentStep = totalSteps;
-    sendProgress({
-      status: "COMPLETED",
-      learnings: allLearnings,
-      progress: currentStep,
-      totalProgress: totalSteps,
-      report:formattedReport,
-      visitedUrls,
-      media: allMedia,
-    });
+    console.log("Research completed successfully");
+    const finalMetrics = calculateProgressMetrics(context);
+    sendProgress(
+      constructProgressUpdate(
+        context,
+        "COMPLETED",
+        { ...finalMetrics, confidence: completionConfidence },
+        report,
+      ),
+    );
   } catch (error) {
     console.error("Error in handleResearch:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "An unknown error occurred";
     sendProgress({
       status: "ERROR",
       learnings: [],
       progress: 0,
       totalProgress: 1,
-      error: errorMessage,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
       visitedUrls: [],
       media: [],
     });
   }
 }
 
+// -----------------------------
+// Exports
+// -----------------------------
 export {
-  generateClarifyingQuestions,
   handleResearch,
+  generateClarifyingQuestions,
   formatReport,
   researchQuery,
-  getImageDimensions,
-  analyzeImageWithVision,
-  analyzeImagesWithVision,
+  type MediaContent,
+  type ResearchContext,
+  type ResearchProgressInfo,
+  type EnhancedProgress,
 };

@@ -1,0 +1,21 @@
+modify the component that displays research progress (for example, in the report or research history view) as follows:
+
+Import the Card and SafeMarkdown components (defined in client/src/components/ui/card.tsx and client/src/components/ui/safe-markdown.tsx respectively ).
+
+Create or modify a display component to encapsulate the findings. For example:
+
+import React from "react"; import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"; import { SafeMarkdown } from "@/components/ui/safe-markdown";
+
+interface ResearchProgressDisplayProps { findings: string; }
+
+export function ResearchProgressDisplay({ findings }: ResearchProgressDisplayProps) { return ( <Card className="my-4"> <CardHeader> <CardTitle>Current Findings</CardTitle> </CardHeader> <CardContent> <SafeMarkdown content={findings} /> </CardContent> </Card> ); }
+
+Use this component where the progress updates are received via WebSocket. For instance, if your research progress hook (in client/src/hooks/use-research.tsx) stores a string of the current findings, pass that string to ResearchProgressDisplay. This change will ensure that markdown is parsed and styled, and that the content is wrapped in a card that visually separates it from other UI elements.
+
+If the findings are very lengthy or need grouping, consider using the Accordion component (client/src/components/ui/accordion.tsx ) to group sections. For instance:
+
+import React from "react"; import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"; import { SafeMarkdown } from "@/components/ui/safe-markdown";
+
+interface FindingsAccordionProps { findings: { title: string; content: string }[]; }
+
+export function FindingsAccordion({ findings }: FindingsAccordionProps) { return ( <Accordion type="single" collapsible> {findings.map((finding, index) => ( <AccordionItem key={index} value={item-${index}}> <AccordionTrigger>{finding.title}</AccordionTrigger> <AccordionContent> <SafeMarkdown content={finding.content} /> </AccordionContent> </AccordionItem> ))} </Accordion> ); }
