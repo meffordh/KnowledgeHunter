@@ -157,41 +157,32 @@ type EnhancedProgress = ResearchProgress & ResearchProgressInfo;
 // -----------------------------
 function trimPrompt(
   text: string,
-  modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
+  modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG]
 ): string {
   try {
-    let enc;
-    try {
-      enc = encodingForModel(modelConfig.tokenizer);
-    } catch (error) {
-      console.warn(`Falling back to cl100k_base for model ${modelConfig.name}`);
-      enc = encodingForModel("cl100k_base");
+    const tokenizerName = "cl100k_base"; // Always use cl100k_base tokenizer
+    const enc = encodingForModel(tokenizerName);
+    const tokens = enc.encode(text);
+
+    let maxTokens = modelConfig.maxTokens;
+    // Adjust token limits based on model
+    if (modelConfig.name.includes("gpt-4o")) {
+      maxTokens = Math.min(maxTokens, 16000);
+    } else if (modelConfig.name.includes("o3-mini")) {
+      maxTokens = Math.min(maxTokens, 128000);
     }
 
-    const tokens = enc.encode(text);
-    if (tokens.length <= modelConfig.maxTokens) return text;
-    console.warn(
-      `Prompt exceeds token limit (${tokens.length} > ${modelConfig.maxTokens}) for model ${modelConfig.name}. Trimming prompt.`,
-    );
-    const sentences = text.split(/(?<=[.!?])\s+/);
-    let trimmedText = "";
-    let currentTokens = 0;
-    for (const sentence of sentences) {
-      const candidateText = trimmedText
-        ? `${trimmedText} ${sentence}`
-        : sentence;
-      const candidateTokens = enc.encode(candidateText).length;
-      if (candidateTokens <= modelConfig.maxTokens) {
-        trimmedText = candidateText;
-        currentTokens = candidateTokens;
-      } else {
-        break;
-      }
+    if (tokens.length <= maxTokens) {
+      return text;
     }
+
     console.warn(
-      `Trimmed prompt for ${modelConfig.name} from ${tokens.length} to ${currentTokens} tokens`,
+      `Prompt exceeds token limit (${tokens.length} > ${maxTokens}) for model ${modelConfig.name}. Trimming prompt.`
     );
-    return trimmedText;
+
+    // Trim to token limit and decode back to text
+    const trimmedTokens = tokens.slice(0, maxTokens);
+    return enc.decode(trimmedTokens);
   } catch (error) {
     console.error(`Error trimming prompt for ${modelConfig.name}:`, error);
     return text;
@@ -344,7 +335,11 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
           if (analysis.isUseful) {
             const dimensions = await getImageDimensions(imgUrl);
 
-            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+            if (
+              dimensions &&
+              dimensions.width >= 400 &&
+              dimensions.width <= 2500
+            ) {
               console.log(`Adding useful image: ${imgUrl}`);
               mediaContent.push({
                 type: "image",
@@ -638,13 +633,13 @@ async function formatReport(
       query,
       learnings: learnings.slice(-50),
       sources: visitedUrls,
-      mediaContent: media.map(m => ({
+      mediaContent: media.map((m) => ({
         type: m.type,
         url: m.url,
         title: m.title || undefined,
         description: m.description || undefined,
-        embedCode: m.embedCode
-      }))
+        embedCode: m.embedCode,
+      })),
     };
 
     const response = await openai.chat.completions.create({
@@ -666,9 +661,12 @@ async function formatReport(
 - Conclude with key insights and recommendations
 - Include a sources section`,
         },
-        { role: "user", content: JSON.stringify(context) }
+        { role: "user", content: JSON.stringify(context) },
       ],
-      max_tokens: Math.min(modelConfig.maxTokens - 1000, MAX_COMPLETION_TOKENS)
+      max_completion_tokens: Math.min(
+        modelConfig.maxTokens - 1000,
+        MAX_COMPLETION_TOKENS,
+      ),
     });
 
     const report = response.choices[0]?.message?.content;
@@ -771,14 +769,18 @@ async function researchQuery(
 
     if (!parsedResult.success) {
       console.warn(`Failed to parse Firecrawl results for query: ${query}`);
-      return { findings: ["Error processing search results."], urls: [], media: [] };
+      return {
+        findings: ["Error processing search results."],
+        urls: [],
+        media: [],
+      };
     }
 
-    const urls = parsedResult.data.data.map(item => item.url);
+    const urls = parsedResult.data.data.map((item) => item.url);
 
     // Fetch pages directly
     console.log(`Fetching ${urls.length} pages for detailed content analysis`);
-    const rawHtmlPromises = urls.map(url => fetchWithTimeout(url, 5000));
+    const rawHtmlPromises = urls.map((url) => fetchWithTimeout(url, 5000));
     const rawHtmlResults = await Promise.allSettled(rawHtmlPromises);
 
     const extractedContent = rawHtmlResults
@@ -790,34 +792,40 @@ async function researchQuery(
           return null;
         }
       })
-      .filter((result): result is { url: string; html: string } => result !== null);
+      .filter(
+        (result): result is { url: string; html: string } => result !== null,
+      );
 
     // Process both Firecrawl content and fetched HTML
     const findings: string[] = [];
 
     // Add Firecrawl findings first
     const firecrawlFindings = parsedResult.data.data
-      .map(item => item.content || "")
-      .filter(content => content.trim() !== "");
+      .map((item) => item.content || "")
+      .filter((content) => content.trim() !== "");
     findings.push(...firecrawlFindings);
 
     // Add extracted content from HTML
     for (const { url, html } of extractedContent) {
       try {
         // Extract main content from HTML (avoiding navigation, headers, footers)
-        const contentMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
-                               html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
-                               html.match(/<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i);
+        const contentMatch =
+          html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
+          html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
+          html.match(
+            /<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i,
+          );
 
         if (contentMatch) {
           const textContent = contentMatch[1]
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/\s+/g, ' ')
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
             .trim();
 
-          if (textContent.length > 100) { // Only add substantial content
+          if (textContent.length > 100) {
+            // Only add substantial content
             findings.push(`From ${url}: ${textContent}`);
           }
         }
@@ -833,11 +841,15 @@ async function researchQuery(
     }
 
     // Detect media content from the fetched pages
-    const mediaPromises = extractedContent.map(({ url }) => detectMediaContent(url));
+    const mediaPromises = extractedContent.map(({ url }) =>
+      detectMediaContent(url),
+    );
     const mediaResults = await Promise.all(mediaPromises);
     const media = mediaResults.flat();
 
-    console.log(`Found ${findings.length} findings and ${media.length} media items for query: ${query}`);
+    console.log(
+      `Found ${findings.length} findings and ${media.length} media items for query: ${query}`,
+    );
     return { findings, urls, media };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
@@ -896,7 +908,9 @@ async function handleResearch(
 
       // Update progress before starting the batch
       const startMetrics = calculateProgressMetrics(context);
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
+      sendProgress(
+        constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
+      );
 
       const results = await Promise.all(
         queries.map(async (query) => {
@@ -908,7 +922,9 @@ async function handleResearch(
             ...context,
             processedQueries: context.processedQueries + 1,
           });
-          sendProgress(constructProgressUpdate(context, "IN_PROGRESS", queryMetrics));
+          sendProgress(
+            constructProgressUpdate(context, "IN_PROGRESS", queryMetrics),
+          );
 
           return result;
         }),
@@ -928,7 +944,9 @@ async function handleResearch(
 
         // Send progress update after processing each batch of findings
         const batchMetrics = calculateProgressMetrics(context);
-        sendProgress(constructProgressUpdate(context, "IN_PROGRESS", batchMetrics));
+        sendProgress(
+          constructProgressUpdate(context, "IN_PROGRESS", batchMetrics),
+        );
       }
 
       context = updateResearchContext(context, {
@@ -936,8 +954,7 @@ async function handleResearch(
       });
 
       console.log(
-        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
-      );
+        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,      );
 
       const metrics = calculateProgressMetrics(context);
       sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
