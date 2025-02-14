@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@radix-ui/react-tooltip'
-
+import { ResearchProgressDisplay } from "@/components/ui/research-progress";
 
 export default function HomePage() {
   const { startResearch, progress, isResearching } = useResearch();
@@ -344,6 +344,8 @@ export default function HomePage() {
                     </div>
                   )}
 
+                  <ResearchProgressDisplay progress={progress} className="mt-4" />
+
                   {progress.report && (
                     <div className="mt-8">
                       <div className="flex justify-end gap-2 mb-4">
@@ -400,17 +402,6 @@ export default function HomePage() {
                             </ul>
                           </div>
                         )}
-                    </div>
-                  )}
-
-                  {!progress.report && progress.learnings.length > 0 && (
-                    <div>
-                      <h3 className="font-medium">Learnings:</h3>
-                      <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
-                        {progress.learnings.map((learning, index) => (
-                          <li key={index}>{learning}</li>
-                        ))}
-                      </ul>
                     </div>
                   )}
                 </div>

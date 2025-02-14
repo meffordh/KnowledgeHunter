@@ -8,9 +8,10 @@ import { format } from "date-fns";
 import { ShareButton } from "@/components/ui/share-button";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { ResearchProgressDisplay, FindingsAccordion } from "@/components/ui/research-progress";
 
 export default function ResearchHistoryPage() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth(); 
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -20,19 +21,7 @@ export default function ResearchHistoryPage() {
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10,   // 10 minutes
     retry: 1, // Only retry once for auth errors
-    retryDelay: 1000,
-    onError: async (error) => {
-      // Check if the error is due to authentication
-      if (error instanceof Error && error.message.includes('JWT is expired')) {
-        toast({
-          title: "Session Expired",
-          description: "Your session has expired. Please sign in again.",
-          variant: "destructive",
-        });
-        await signOut();
-        setLocation('/auth');
-      }
-    }
+    retryDelay: 1000
   });
 
   const downloadReport = (report: ResearchReport) => {
@@ -144,6 +133,15 @@ export default function ResearchHistoryPage() {
                 <div className="prose prose-sm max-w-none">
                   {report.report.slice(0, 200)}...
                 </div>
+                {report.learnings && report.learnings.length > 0 && (
+                  <FindingsAccordion
+                    findings={report.learnings.map((learning, idx) => ({
+                      title: `Finding ${idx + 1}`,
+                      content: learning
+                    }))}
+                    className="mt-4"
+                  />
+                )}
                 {report.visitedUrls && report.visitedUrls.length > 0 && (
                   <div className="mt-4">
                     <p className="text-sm font-medium">Sources: {report.visitedUrls.length}</p>

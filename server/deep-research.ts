@@ -1,5 +1,4 @@
-// deep-research.ts - True drop-in replacement
-
+import LRUCache from "lru-cache";
 import OpenAI from "openai";
 import { z } from "zod";
 import FirecrawlApp from "@mendable/firecrawl-js";
@@ -9,7 +8,6 @@ import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
 import { fetchWithTimeout } from "./utils/fetchUtils";
 import sizeOf from "image-size";
-import { LRUCache } from "lru-cache";
 
 // -----------------------------
 // Initialization & Model Config
@@ -590,26 +588,14 @@ async function generateClarifyingQuestions(query: string): Promise<string[]> {
         {
           role: "system",
           content:
-            "Generate clarifying questions to refine queries. Your output must be strictly formatted as valid JSON that exactly matches the provided schema.",
+            "Generate clarifying questions to refine queries. Return questions in a JSON array format.",
         },
         {
           role: "user",
           content: `Generate clarifying questions for this research query: "${trimmedQuery}"`,
         },
       ],
-      response_format: {
-        type: "json_object",
-        schema: {
-          type: "object",
-          properties: {
-            questions: {
-              type: "array",
-              items: { type: "string" },
-            },
-          },
-          required: ["questions"],
-        },
-      },
+      response_format: { type: "json_object" },
       max_tokens: 1500,
     });
     const content = response.choices[0]?.message?.content;
@@ -777,14 +763,13 @@ async function researchQuery(
 ): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
     console.log("Performing research query:", query);
-    // Use Firecrawl to perform the search
-    const fcResult = await firecrawl.search({ query });
+    // Update firecrawl search call to pass query string directly
+    const fcResult = await firecrawl.search(query);
     const parsedResult = FirecrawlResult.parse(fcResult);
     const findings = parsedResult.data
       .map((item) => item.content || "")
       .filter((content) => content.trim() !== "");
     const urls = parsedResult.data.map((item) => item.url);
-    // Media processing could be extended here if desired.
     const media: MediaContent[] = [];
     return { findings, urls, media };
   } catch (error) {

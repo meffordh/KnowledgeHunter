@@ -17,7 +17,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState<ResearchProgress | null>(null);
   const [isResearching, setIsResearching] = useState(false);
   const { toast } = useToast();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
 
   const startResearch = useCallback(async (research: Research) => {
@@ -85,14 +85,14 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
 
           if (progress.status === 'ERROR') {
             console.error('Research error:', progress.error);
-            if (progress.error?.toLowerCase().includes('authentication') || 
+            if (progress.error?.toLowerCase().includes('authentication') ||
                 progress.error?.toLowerCase().includes('jwt')) {
               toast({
                 title: 'Session Expired',
                 description: 'Your session has expired. Please sign in again.',
                 variant: 'destructive',
               });
-              signOut().then(() => setLocation('/auth'));
+              setLocation('/auth');
             } else {
               toast({
                 title: 'Research Error',
@@ -168,14 +168,14 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       setSocket(ws);
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
-      if (error instanceof Error && 
+      if (error instanceof Error &&
           (error.message.includes('authentication') || error.message.includes('jwt'))) {
         toast({
           title: 'Session Expired',
           description: 'Your session has expired. Please sign in again.',
           variant: 'destructive',
         });
-        signOut().then(() => setLocation('/auth'));
+        setLocation('/auth');
       } else {
         toast({
           title: 'Connection Error',
@@ -185,7 +185,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       }
       setIsResearching(false);
     }
-  }, [toast, socket, isResearching, user, signOut, setLocation]);
+  }, [toast, socket, isResearching, user, setLocation]);
 
   return (
     <ResearchContext.Provider value={{ startResearch, progress, isResearching }}>
