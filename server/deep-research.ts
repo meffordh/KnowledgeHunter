@@ -285,6 +285,7 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
   try {
     const html = await fetchWithTimeout(url, 5000);
     const mediaContent: MediaContent[] = [];
+
     // Process YouTube videos
     const youtubeRegex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
@@ -300,72 +301,67 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
           embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
         });
         console.log(`Added valid YouTube video: ${videoUrl}`);
-      } else {
-        console.log(`Skipped invalid YouTube video: ${videoUrl}`);
       }
     }
-    // Process images
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+
+    // Enhanced image processing
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
     const imgMatches = html.matchAll(imgRegex);
-    const imageUrls: string[] = [];
+    const imageUrls = new Set<string>();
+
     for (const match of Array.from(imgMatches)) {
       let imgUrl = match[1];
-      if (!imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        console.log(`Skipping non-image URL: ${imgUrl}`);
+
+      // Skip common non-content images
+      if (
+        imgUrl.includes("icon") ||
+        imgUrl.includes("logo") ||
+        imgUrl.includes("avatar") ||
+        imgUrl.includes("thumbnail") ||
+        !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+      ) {
+        console.log(`Skipping non-content image: ${imgUrl}`);
         continue;
       }
-      if (imgUrl.includes("icon") || imgUrl.includes("logo")) {
-        console.log(`Skipping icon/logo image: ${imgUrl}`);
-        continue;
-      }
+
+      // Convert relative URLs to absolute
       if (imgUrl.startsWith("/")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-        console.log(`Converted relative URL to absolute: ${imgUrl}`);
       } else if (!imgUrl.startsWith("http")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
-        console.log(`Added protocol and host to URL: ${imgUrl}`);
       }
-      imageUrls.push(imgUrl);
-    }
-    console.log(`Found ${imageUrls.length} potential images to analyze`);
-    const imageAnalysisPromises = imageUrls.map(async (imgUrl) => {
-      try {
-        console.log(`Analyzing image: ${imgUrl}`);
-        const analysis = await analyzeImageWithVision(imgUrl);
-        if (analysis.isUseful) {
-          const dimensions = await getImageDimensions(imgUrl);
-          if (
-            dimensions &&
-            dimensions.width >= 400 &&
-            dimensions.width <= 2500
-          ) {
-            console.log(
-              `Adding useful image: ${imgUrl} (${dimensions.width}x${dimensions.height})`,
-            );
-            return {
-              type: "image",
-              url: imgUrl,
-              title: analysis.title,
-              description: analysis.description,
-            };
-          } else {
-            console.log(`Skipping image due to dimensions: ${imgUrl}`);
+
+      // Only process each unique image URL once
+      if (!imageUrls.has(imgUrl)) {
+        imageUrls.add(imgUrl);
+
+        try {
+          console.log(`Analyzing image: ${imgUrl}`);
+          const analysis = await analyzeImageWithVision(imgUrl);
+
+          if (analysis.isUseful) {
+            const dimensions = await getImageDimensions(imgUrl);
+
+            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+              console.log(`Adding useful image: ${imgUrl}`);
+              mediaContent.push({
+                type: "image",
+                url: imgUrl,
+                title: analysis.title,
+                description: analysis.description,
+              });
+            } else {
+              console.log(`Skipping image due to dimensions: ${imgUrl}`);
+            }
           }
-        } else {
-          console.log(`Skipping non-useful image: ${imgUrl}`);
+        } catch (error) {
+          console.error(`Error processing image ${imgUrl}:`, error);
         }
-      } catch (error) {
-        console.error(`Error processing image ${imgUrl}:`, error);
       }
-      return null;
-    });
-    const analyzedImages = await Promise.all(imageAnalysisPromises);
-    const validImages = analyzedImages.filter(
-      (img): img is MediaContent => img !== null,
-    );
-    mediaContent.push(...validImages);
+    }
+
     console.log(
       `Successfully processed ${mediaContent.length} media items from ${url}`,
     );
@@ -642,12 +638,13 @@ async function formatReport(
       query,
       learnings: learnings.slice(-50),
       sources: visitedUrls,
-      mediaContent: media.map((m) => ({
+      mediaContent: media.map(m => ({
         type: m.type,
         url: m.url,
         title: m.title || undefined,
         description: m.description || undefined,
-      })),
+        embedCode: m.embedCode
+      }))
     };
 
     const response = await openai.chat.completions.create({
@@ -661,20 +658,17 @@ async function formatReport(
 - Incorporate a section for key findings near the beginning
 - Use writing style that is appropriate given the context of the query
 - Use tabular data to display findings where relevant
-- Incorporate media references where relevant
+- Incorporate media references where relevant, using proper markdown image syntax ![description](url) or embedding provided YouTube iframes
+- Place relevant images near their related content
+- For each image or video, include a brief caption explaining its relevance
 - Use markdown formatting for structure
 - Cite sources using footnotes
 - Conclude with key insights and recommendations
-- Do not include place holders for the query, learnings, sources, mdeia, or any other information
-- Focus on relevance and engagment
 - Include a sources section`,
         },
-        { role: "user", content: JSON.stringify(context) },
+        { role: "user", content: JSON.stringify(context) }
       ],
-      max_completion_tokens: Math.min(
-        modelConfig.maxTokens - 1000,
-        MAX_COMPLETION_TOKENS,
-      ),
+      max_tokens: Math.min(modelConfig.maxTokens - 1000, MAX_COMPLETION_TOKENS)
     });
 
     const report = response.choices[0]?.message?.content;
@@ -812,8 +806,8 @@ async function researchQuery(
       try {
         // Extract main content from HTML (avoiding navigation, headers, footers)
         const contentMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
-                           html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
-                           html.match(/<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i);
+                               html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
+                               html.match(/<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i);
 
         if (contentMatch) {
           const textContent = contentMatch[1]
@@ -900,10 +894,23 @@ async function handleResearch(
         `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
       );
 
+      // Update progress before starting the batch
+      const startMetrics = calculateProgressMetrics(context);
+      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
+
       const results = await Promise.all(
         queries.map(async (query) => {
           console.log(`Executing query: ${query}`);
-          return await researchQuery(query);
+          const result = await researchQuery(query);
+
+          // Send progress update after each query completion
+          const queryMetrics = calculateProgressMetrics({
+            ...context,
+            processedQueries: context.processedQueries + 1,
+          });
+          sendProgress(constructProgressUpdate(context, "IN_PROGRESS", queryMetrics));
+
+          return result;
         }),
       );
 
@@ -918,6 +925,10 @@ async function handleResearch(
         context.learnings.push(...processedFindings);
         context.visitedUrls.push(...result.urls);
         context.media.push(...result.media);
+
+        // Send progress update after processing each batch of findings
+        const batchMetrics = calculateProgressMetrics(context);
+        sendProgress(constructProgressUpdate(context, "IN_PROGRESS", batchMetrics));
       }
 
       context = updateResearchContext(context, {
