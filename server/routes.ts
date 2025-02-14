@@ -10,35 +10,16 @@ import { storage } from './storage';
 import { handleLinkedInShare } from './linkedin';
 
 export function registerRoutes(app: Express): Server {
-  // Configure CORS with specific options for Clerk
+  // Configure CORS
   app.use(cors({
-    origin: [
-      /^https:\/\/.*\.clerk\.accounts\.dev$/,  // Clerk accounts domain
-      /^https:\/\/.*\.replit\.dev$/,           // Replit dev domain
-      process.env.FRONTEND_URL || 'http://localhost:3000'
-    ],
+    origin: true, // Allow all origins in development
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Origin',
-      'X-Requested-With',
-      'Content-Type',
-      'Accept',
-      'Authorization',
-      'X-Clerk-Auth-Status',
-      'X-Clerk-Auth-Token'
-    ],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
   }));
 
-  // Initialize Clerk with auth and proper session handling
-  app.use(ClerkExpressWithAuth({
-    sessionOptions: {
-      cookie: {
-        sameSite: 'none',
-        secure: true
-      }
-    }
-  }));
+  // Initialize Clerk with auth
+  app.use(ClerkExpressWithAuth());
 
   // Setup auth routes
   setupAuth(app);
