@@ -642,12 +642,12 @@ async function formatReport(
       query,
       learnings: learnings.slice(-50),
       sources: visitedUrls,
-      mediaContent: media.map(m => ({
+      mediaContent: media.map((m) => ({
         type: m.type,
         url: m.url,
         title: m.title || undefined,
-        description: m.description || undefined
-      }))
+        description: m.description || undefined,
+      })),
     };
 
     const response = await openai.chat.completions.create({
@@ -669,9 +669,12 @@ async function formatReport(
 - Focus on relevance and engagment
 - Include a sources section`,
         },
-        { role: "user", content: JSON.stringify(context) }
+        { role: "user", content: JSON.stringify(context) },
       ],
-      max_tokens: Math.min(modelConfig.maxTokens - 1000, MAX_COMPLETION_TOKENS)
+      max_completion_tokens: Math.min(
+        modelConfig.maxTokens - 1000,
+        MAX_COMPLETION_TOKENS,
+      ),
     });
 
     const report = response.choices[0]?.message?.content;
@@ -763,24 +766,84 @@ function updateResearchContext(
 // -----------------------------
 // New Implementation: researchQuery
 // -----------------------------
-async function researchQuery(query: string): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
+async function researchQuery(
+  query: string,
+): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
     console.log("Performing research query:", query);
 
     const fcResult = await firecrawl.search(query);
     const parsedResult = FirecrawlResult.safeParse(fcResult);
 
-    if (!parsedResult.success || parsedResult.data.data.length === 0) {
-      console.warn(`No results found for query: ${query}`);
-      return { findings: ["No relevant findings available for this query."], urls: [], media: [] };
+    if (!parsedResult.success) {
+      console.warn(`Failed to parse Firecrawl results for query: ${query}`);
+      return { findings: ["Error processing search results."], urls: [], media: [] };
     }
 
-    const findings = parsedResult.data.data
+    const urls = parsedResult.data.data.map(item => item.url);
+
+    // Fetch pages directly
+    console.log(`Fetching ${urls.length} pages for detailed content analysis`);
+    const rawHtmlPromises = urls.map(url => fetchWithTimeout(url, 5000));
+    const rawHtmlResults = await Promise.allSettled(rawHtmlPromises);
+
+    const extractedContent = rawHtmlResults
+      .map((result, index) => {
+        if (result.status === "fulfilled") {
+          return { url: urls[index], html: result.value };
+        } else {
+          console.warn(`Skipping failed fetch for URL: ${urls[index]}`);
+          return null;
+        }
+      })
+      .filter((result): result is { url: string; html: string } => result !== null);
+
+    // Process both Firecrawl content and fetched HTML
+    const findings: string[] = [];
+
+    // Add Firecrawl findings first
+    const firecrawlFindings = parsedResult.data.data
       .map(item => item.content || "")
       .filter(content => content.trim() !== "");
-    const urls = parsedResult.data.data.map(item => item.url);
-    const media: MediaContent[] = [];
+    findings.push(...firecrawlFindings);
 
+    // Add extracted content from HTML
+    for (const { url, html } of extractedContent) {
+      try {
+        // Extract main content from HTML (avoiding navigation, headers, footers)
+        const contentMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
+                           html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
+                           html.match(/<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i);
+
+        if (contentMatch) {
+          const textContent = contentMatch[1]
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (textContent.length > 100) { // Only add substantial content
+            findings.push(`From ${url}: ${textContent}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`Error extracting content from ${url}:`, error);
+      }
+    }
+
+    // If no findings were gathered, provide a placeholder
+    if (findings.length === 0) {
+      console.warn(`No usable content found for query: ${query}`);
+      findings.push("No relevant findings available for this query.");
+    }
+
+    // Detect media content from the fetched pages
+    const mediaPromises = extractedContent.map(({ url }) => detectMediaContent(url));
+    const mediaResults = await Promise.all(mediaPromises);
+    const media = mediaResults.flat();
+
+    console.log(`Found ${findings.length} findings and ${media.length} media items for query: ${query}`);
     return { findings, urls, media };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
