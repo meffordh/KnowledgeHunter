@@ -234,35 +234,48 @@ async function getImageDimensions(
 // Helper: analyzeImageWithVision
 // -----------------------------
 async function analyzeImageWithVision(
-  imageUrl: string,
-): Promise<{ isUseful: boolean; title?: string; description?: string }> {
+  imageUrls: string[],
+): Promise<Array<{ isUseful: boolean; title?: string; description?: string }>> {
   try {
+    // Build the messages array directly using an array (no JSON.stringify)
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Analyze these images and determine if they are useful for research purposes:",
+          },
+          ...imageUrls.map((url) => ({
+            type: "image_url",
+            image_url: { url },
+          })),
+        ],
+      },
+    ];
+
     const response = await openai.chat.completions.create({
       model: MODEL_CONFIG.MEDIA.name,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the image and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            prompt:
-              "Analyze this image and determine if it's useful for research purposes:",
-            image_url: imageUrl,
-          }),
-        },
-      ],
+      messages,
+      // Adjust max_tokens based on the number of images
+      max_tokens: 150 * imageUrls.length,
       response_format: { type: "json_object" },
-      max_tokens: 150,
     });
+
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) return { isUseful: false };
+    // If the response doesn't start with an array, return default false results
+    if (!content || !content.trim().startsWith("[")) {
+      return imageUrls.map(() => ({ isUseful: false }));
+    }
     return JSON.parse(content);
   } catch (error) {
-    console.error("Vision analysis error for", imageUrl, error);
-    return { isUseful: false };
+    console.error("Vision analysis error for images", imageUrls, error);
+    return imageUrls.map(() => ({ isUseful: false }));
   }
 }
 
@@ -296,11 +309,12 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
       }
     }
 
-    // Enhanced image processing
+    // Enhanced batch image processing
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
     const imgMatches = html.matchAll(imgRegex);
     const imageUrls = new Set<string>();
 
+    // Collect and normalize image URLs
     for (const match of Array.from(imgMatches)) {
       let imgUrl = match[1];
 
@@ -325,36 +339,42 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
-      // Only process each unique image URL once
-      if (!imageUrls.has(imgUrl)) {
-        imageUrls.add(imgUrl);
+      imageUrls.add(imgUrl);
+    }
 
-        try {
-          console.log(`Analyzing image: ${imgUrl}`);
-          const analysis = await analyzeImageWithVision(imgUrl);
+    // Process images in batches
+    const batchSize = 10;
+    const urlArray = Array.from(imageUrls);
 
-          if (analysis.isUseful) {
-            const dimensions = await getImageDimensions(imgUrl);
+    for (let i = 0; i < urlArray.length; i += batchSize) {
+      const batch = urlArray.slice(i, i + batchSize);
+      console.log(`Processing batch of ${batch.length} images`);
 
-            if (
-              dimensions &&
-              dimensions.width >= 400 &&
-              dimensions.width <= 2500
-            ) {
-              console.log(`Adding useful image: ${imgUrl}`);
-              mediaContent.push({
-                type: "image",
-                url: imgUrl,
-                title: analysis.title,
-                description: analysis.description,
-              });
-            } else {
-              console.log(`Skipping image due to dimensions: ${imgUrl}`);
+      try {
+        const analyses = await analyzeImageWithVision(batch);
+
+        await Promise.all(
+          analyses.map(async (analysis, index) => {
+            if (analysis.isUseful) {
+              const imgUrl = batch[index];
+              const dimensions = await getImageDimensions(imgUrl);
+
+              if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+                console.log(`Adding useful image: ${imgUrl}`);
+                mediaContent.push({
+                  type: "image",
+                  url: imgUrl,
+                  title: analysis.title,
+                  description: analysis.description,
+                });
+              } else {
+                console.log(`Skipping image due to dimensions: ${imgUrl}`);
+              }
             }
-          }
-        } catch (error) {
-          console.error(`Error processing image ${imgUrl}:`, error);
-        }
+          })
+        );
+      } catch (error) {
+        console.error(`Error processing image batch:`, error);
       }
     }
 
