@@ -1,8 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from 'ws';
-import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
-import cors from 'cors';
+import { requireAuth } from '@clerk/express';
 import { setupAuth } from './auth.js';
 import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
@@ -10,25 +9,20 @@ import { storage } from './storage';
 import { handleLinkedInShare } from './linkedin';
 
 export function registerRoutes(app: Express): Server {
-  // Configure CORS
-  app.use(cors({
-    origin: true, // Allow all origins in development
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization'],
-  }));
+  // Add CORS middleware
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    next();
+  });
 
-  // Initialize Clerk with auth
-  app.use(ClerkExpressWithAuth());
-
-  // Setup auth routes
   setupAuth(app);
 
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
   // Get report templates
-  app.get('/api/report-templates', async (_req, res) => {
+  app.get('/api/report-templates', requireAuth(), async (_req, res) => {
     try {
       const templates = await storage.getReportTemplates();
       res.json(templates);
@@ -39,7 +33,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Get report customization
-  app.get('/api/reports/:reportId/customize', async (req, res) => {
+  app.get('/api/reports/:reportId/customize', requireAuth(), async (req, res) => {
     try {
       const reportId = parseInt(req.params.reportId);
       const customization = await storage.getReportCustomization(reportId);
@@ -56,7 +50,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Create or update report customization
-  app.post('/api/reports/:reportId/customize', async (req, res) => {
+  app.post('/api/reports/:reportId/customize', requireAuth(), async (req, res) => {
     try {
       const reportId = parseInt(req.params.reportId);
       const customization = await storage.createReportCustomization({
@@ -71,7 +65,7 @@ export function registerRoutes(app: Express): Server {
   });
 
   // Get a single report by ID
-  app.get('/api/reports/:id', async (req, res) => {
+  app.get('/api/reports/:id', requireAuth(), async (req, res) => {
     try {
       const reportId = parseInt(req.params.id);
       const report = await storage.getReport(reportId);
@@ -87,7 +81,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.post('/api/clarify', async (req, res) => {
+  app.post('/api/clarify', requireAuth(), async (req, res) => {
     try {
       // Ensure proper JSON content type
       res.setHeader('Content-Type', 'application/json');
@@ -122,7 +116,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.get('/api/research/history', async (req, res) => {
+  app.get('/api/research/history', requireAuth(), async (req, res) => {
     const userId = req.auth?.userId;
     console.log('Research history request received for user:', userId);
 
@@ -141,7 +135,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.post('/api/social/linkedin/share', async (req, res) => {
+  app.post('/api/social/linkedin/share', requireAuth(), async (req, res) => {
     try {
       const result = await handleLinkedInShare(req);
       res.json({ 

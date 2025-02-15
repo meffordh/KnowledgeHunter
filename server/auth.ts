@@ -1,40 +1,44 @@
-import { clerkClient, ClerkExpressRequireAuth } from '@clerk/clerk-sdk-node';
+
+import { clerkClient, clerkMiddleware, requireAuth } from '@clerk/express';
 import express from 'express';
 import { storage } from './storage';
 
 const router = express.Router();
 
 // Protected route to get user data
-router.get('/api/auth/user', ClerkExpressRequireAuth(), async (req, res, next) => {
+router.get('/user', requireAuth(), async (req, res) => {
+  if (!req.auth?.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
   try {
-    const userId = req.auth?.userId;
-    if (!userId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
     // Get user details using clerkClient
-    const clerkUser = await clerkClient.users.getUser(userId);
-
+    const user = await clerkClient.users.getUser(req.auth.userId);
+    
     // Sync user with database
-    const user = await storage.createOrUpdateUser({
-      id: clerkUser.id,
-      email: clerkUser.emailAddresses[0]?.emailAddress || '',
-      name: `${clerkUser.firstName} ${clerkUser.lastName}`.trim(),
+    await storage.createOrUpdateUser({
+      id: user.id,
+      email: user.emailAddresses[0]?.emailAddress || '',
+      name: `${user.firstName} ${user.lastName}`.trim(),
       researchCount: 0
     });
 
-    res.json(user);
+    res.json({
+      id: user.id,
+      email: user.emailAddresses[0]?.emailAddress,
+      firstName: user.firstName,
+      lastName: user.lastName
+    });
   } catch (error) {
-    next(error); // Pass error to error handling middleware
+    console.error('Error syncing user:', error);
+    res.status(500).json({ error: 'Error syncing user data' });
   }
 });
 
-// Error handling middleware
-router.use((err, req, res, next) => {
-  console.error('Auth error:', err.stack);
-  res.status(401).json({ error: 'Unauthenticated!' });
-});
-
 export function setupAuth(app: express.Express) {
-  app.use(router);
+  // Add global Clerk middleware
+  app.use(clerkMiddleware());
+  
+  // Mount auth router
+  app.use('/api/auth', router);
 }
