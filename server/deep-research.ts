@@ -197,35 +197,27 @@ async function getImageDimensions(
   imageUrl: string,
 ): Promise<{ width: number; height: number } | null> {
   try {
-    const cached = imageDimensionCache.get(imageUrl);
-    if (cached) {
-      console.log(`Using cached dimensions for ${imageUrl}`);
-      return cached;
-    }
-    console.log(`Fetching dimensions for ${imageUrl}`);
     const response = await fetch(imageUrl);
-    if (!response.ok) {
-      console.warn(
-        `Failed to fetch image ${imageUrl}: ${response.status} ${response.statusText}`,
-      );
-      return null;
-    }
+    if (!response.ok) return null;
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const dimensions = sizeOf(buffer);
+
     if (
       !dimensions ||
       typeof dimensions.width !== "number" ||
       typeof dimensions.height !== "number"
     ) {
-      console.warn(`Could not determine dimensions for ${imageUrl}`);
       return null;
     }
-    const result = { width: dimensions.width, height: dimensions.height };
-    imageDimensionCache.set(imageUrl, result);
-    return result;
+
+    return {
+      width: dimensions.width,
+      height: dimensions.height,
+    };
   } catch (error) {
-    console.error(`Error getting dimensions for ${imageUrl}:`, error);
+    console.error("Error getting image dimensions for", imageUrl, error);
     return null;
   }
 }
@@ -233,49 +225,67 @@ async function getImageDimensions(
 // -----------------------------
 // Helper: analyzeImageWithVision
 // -----------------------------
-async function analyzeImageWithVision(
-  imageUrls: string[],
-): Promise<Array<{ isUseful: boolean; title?: string; description?: string }>> {
+async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]> {
   try {
-    // Build the messages array directly using an array (no JSON.stringify)
-    const messages = [
-      {
-        role: "system",
-        content:
-          "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON.",
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Analyze these images and determine if they are useful for research purposes:",
-          },
-          ...imageUrls.map((url) => ({
-            type: "image_url",
-            image_url: { url },
-          })),
-        ],
-      },
-    ];
-
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA.name,
-      messages,
-      // Adjust max_tokens based on the number of images
-      max_tokens: 150 * imageUrls.length,
+      model: MODEL_CONFIG.MEDIA,
+      messages: [
+        {
+          role: "system",
+          content: "You are a precise JSON generator for vision analysis. Your response must be ONLY valid JSON, with no additional text, comments, or formatting. The JSON must follow this exact schema: { \"images\": [ { \"url\": string, \"isUseful\": boolean, \"title\": string, \"description\": string } ] }. Do not include any explanations or markdown formatting.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Analyze these images and determine which ones could be useful for research purposes. Respond with ONLY valid JSON:\n${JSON.stringify(urls)}`,
+            }
+          ],
+        },
+      ],
       response_format: { type: "json_object" },
     });
 
     const content = response.choices[0]?.message?.content;
-    // If the response doesn't start with an array, return default false results
-    if (!content || !content.trim().startsWith("[")) {
-      return imageUrls.map(() => ({ isUseful: false }));
+    if (!content) {
+      console.error("Empty response from vision analysis");
+      return urls.map(url => ({ url, isUseful: false }));
     }
-    return JSON.parse(content);
+
+    let parsedContent;
+    try {
+      parsedContent = JSON.parse(content);
+
+      if (!Array.isArray(parsedContent.images)) {
+        console.error("Invalid response structure from vision analysis:", content);
+        return urls.map(url => ({ url, isUseful: false }));
+      }
+
+      // Additional validation of the parsed content
+      const isValidImage = (img: any): img is AnalyzedImage => {
+        return typeof img.url === 'string' &&
+               typeof img.isUseful === 'boolean' &&
+               (!img.title || typeof img.title === 'string') &&
+               (!img.description || typeof img.description === 'string');
+      };
+
+      const validImages = parsedContent.images.filter(isValidImage);
+      if (validImages.length === 0) {
+        console.error("No valid image analysis results found");
+        return urls.map(url => ({ url, isUseful: false }));
+      }
+
+      return validImages;
+    } catch (error) {
+      console.error("Failed to parse vision analysis response:", error);
+      console.error("Raw response content:", content);
+      return urls.map(url => ({ url, isUseful: false }));
+    }
   } catch (error) {
-    console.error("Vision analysis error for images", imageUrls, error);
-    return imageUrls.map(() => ({ isUseful: false }));
+    console.error("Error in batch vision analysis:", error);
+    return urls.map(url => ({ url, isUseful: false }));
   }
 }
 
@@ -287,50 +297,46 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     console.warn("Received empty URL in detectMediaContent");
     return [];
   }
+
   try {
+    // Use our new utility to fetch HTML with a 5-second timeout
     const html = await fetchWithTimeout(url, 5000);
     const mediaContent: MediaContent[] = [];
 
-    // Process YouTube videos
-    const youtubeRegex =
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-    const youtubeMatches = html.matchAll(youtubeRegex);
-    for (const match of Array.from(youtubeMatches)) {
+    // Process YouTube videos (existing code remains unchanged)
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
+
+    for (const match of youtubeMatches) {
       const videoId = match[1];
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log(`Validating YouTube video: ${videoUrl}`);
-      if (await isYouTubeVideoValid(videoUrl)) {
+
+      const isValid = await isYouTubeVideoValid(videoUrl);
+      if (isValid) {
         mediaContent.push({
           type: "video",
           url: videoUrl,
           embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
         });
-        console.log(`Added valid YouTube video: ${videoUrl}`);
       }
     }
 
-    // Enhanced batch image processing
-    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
-    const imgMatches = html.matchAll(imgRegex);
-    const imageUrls = new Set<string>();
+    // Enhanced batch image detection
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = Array.from(html.matchAll(imgRegex));
+    const imageUrls: string[] = [];
 
     // Collect and normalize image URLs
-    for (const match of Array.from(imgMatches)) {
+    for (const match of imgMatches) {
       let imgUrl = match[1];
+      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
 
-      // Skip common non-content images
-      if (
-        imgUrl.includes("icon") ||
-        imgUrl.includes("logo") ||
-        imgUrl.includes("avatar") ||
-        imgUrl.includes("thumbnail") ||
-        !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-      ) {
-        console.log(`Skipping non-content image: ${imgUrl}`);
+      // Skip images with undesired keywords
+      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
         continue;
       }
 
-      // Convert relative URLs to absolute
+      // Handle relative URLs
       if (imgUrl.startsWith("/")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
@@ -339,51 +345,36 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
 
-      imageUrls.add(imgUrl);
+      imageUrls.push(imgUrl);
     }
 
-    // Process images in batches
-    const batchSize = 10;
-    const urlArray = Array.from(imageUrls);
+    // Batch analyze images with vision model
+    if (imageUrls.length > 0) {
+      const analyzedImages = await analyzeImagesWithVision(imageUrls);
 
-    for (let i = 0; i < urlArray.length; i += batchSize) {
-      const batch = urlArray.slice(i, i + batchSize);
-      console.log(`Processing batch of ${batch.length} images`);
-
-      try {
-        const analyses = await analyzeImageWithVision(batch);
-
-        await Promise.all(
-          analyses.map(async (analysis, index) => {
-            if (analysis.isUseful) {
-              const imgUrl = batch[index];
-              const dimensions = await getImageDimensions(imgUrl);
-
-              if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
-                console.log(`Adding useful image: ${imgUrl}`);
-                mediaContent.push({
-                  type: "image",
-                  url: imgUrl,
-                  title: analysis.title,
-                  description: analysis.description,
-                });
-              } else {
-                console.log(`Skipping image due to dimensions: ${imgUrl}`);
-              }
+      // Only check dimensions for useful images
+      for (const image of analyzedImages) {
+        if (image.isUseful) {
+          try {
+            const dimensions = await getImageDimensions(image.url);
+            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
+              mediaContent.push({
+                type: "image",
+                url: image.url,
+                title: image.title,
+                description: image.description,
+              });
             }
-          })
-        );
-      } catch (error) {
-        console.error(`Error processing image batch:`, error);
+          } catch (error) {
+            console.error("Error processing image dimensions:", image.url, error);
+          }
+        }
       }
     }
 
-    console.log(
-      `Successfully processed ${mediaContent.length} media items from ${url}`,
-    );
     return mediaContent;
   } catch (error) {
-    console.error(`Error detecting media content from ${url}:`, error);
+    console.error("Error detecting media content:", error);
     return [];
   }
 }
