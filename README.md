@@ -29,41 +29,51 @@ The updated process now distinguishes between Quick Hunter vs Deep Hunter modes,
 
 ```mermaid
 flowchart TD
-    A["Start: handleResearch"]
-    B["Trim query with trimPrompt (BALANCED)"]
-    C["Determine research parameters (Model: BALANCED)"]
-    D["Output: breadth & depth (Quick Hunter vs Deep Hunter)"]
-    E["Loop over query iterations"]
-    F["Process iteration with researchQuery"]
-    G["Search via FirecrawlApp.search"]
-    H["Detect media content & validate YouTube videos"]
-    I["Vision Model Analysis for Images"]
-    J["Compile & trim context (trimPrompt with MEDIA)"]
-    K["Analyze data with OpenAI (Model: MEDIA)"]
-    L["Render Markdown with Tables & Formatting"]
-    M["Generate follow-up queries (BALANCED)"]
-    N["Accumulate learnings, URLs & Media"]
-    O["Format report (Model: MEDIA)"]
-    P["Final Report in Markdown with Progress Indicators"]
-    Q["Send real-time progress updates (WebSocket)"]
+  %% Main Entry Point
+  A[handleResearch] -->|Orchestrates| B[determineResearchParameters]
+  A --> C[researchQuery]
+  A --> D[expandQuery]
+  A --> E[isResearchSufficient]
+  A --> F[formatReport]
+  A --> G[generateClarifyingQuestions]
 
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    L --> N
-    E -- Optional --> M
-    M --> N
-    N --> O
-    O --> P
-    P --> Q
+  %% researchQuery subflow
+  C --> H[Firecrawl.search]
+  C --> I[fetchWithTimeout HTML]
+  I --> J[Extract HTML Content]
+  J --> K[detectMediaContent]
+
+  %% detectMediaContent subflow
+  K --> L[Process YouTube URLs isYouTubeVideoValid]
+  K --> M[Collect Image URLs]
+  M --> N[analyzeImagesWithVision]
+  N --> O[getImageDimensions]
+  O --> K
+
+  %% Post-processing in researchQuery
+  C --> P[processBatchFindings]
+
+  %% Helper Functions used across flows
+  B -.-> Q[trimPrompt]
+  P -.-> Q
+  D -.-> Q
+  E -.-> Q
+  F -.-> Q
+  G -.-> Q
+
+  %% All OpenAI API calls use the completions.create helper
+  B --> R[openai.chat.completions.create]
+  P --> R
+  D --> R
+  E --> R
+  F --> R
+  G --> R
+
+  %% Labels for clarity
+  subgraph Helpers [Helper Functions]
+    Q[trimPrompt]
+    R[openai.chat.completions.create]
+  end
 ```
 
 ## Key Features

@@ -124,6 +124,13 @@ interface MediaContent {
   embedCode?: string;
 }
 
+interface AnalyzedImage {
+  url: string;
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}
+
 interface ResearchContext {
   query: string;
   learnings: string[];
@@ -150,6 +157,8 @@ interface ResearchProgressInfo {
   };
 }
 
+// Add media detection functionality
+
 type EnhancedProgress = ResearchProgress & ResearchProgressInfo;
 
 // -----------------------------
@@ -160,18 +169,9 @@ function trimPrompt(
   modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
 ): string {
   try {
-    // const tokenizerName = "cl100k_base"; // Always use cl100k_base tokenizer
-    const enc = encodingForModel("gpt-4");
-
+    const enc = encodingForModel("gpt-4"); // Always use the same tokenizer
     const tokens = enc.encode(text);
-
     let maxTokens = modelConfig.maxTokens;
-    // Adjust token limits based on model context
-    if (modelConfig.name.includes("gpt-4o")) {
-      maxTokens = Math.min(maxTokens, 100000);
-    } else if (modelConfig.name.includes("o3-mini")) {
-      maxTokens = Math.min(maxTokens, 100000);
-    }
 
     if (tokens.length <= maxTokens) {
       return text;
@@ -181,9 +181,20 @@ function trimPrompt(
       `Prompt exceeds token limit (${tokens.length} > ${maxTokens}) for model ${modelConfig.name}. Trimming prompt.`,
     );
 
-    // Trim to token limit and decode back to text
-    const trimmedTokens = tokens.slice(0, maxTokens);
-    return enc.decode(trimmedTokens);
+    // Split text into sentences and accumulate until the token limit is reached
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    let trimmedText = "";
+    let currentTokenCount = 0;
+
+    for (const sentence of sentences) {
+      const sentenceTokens = enc.encode(sentence).length;
+      if (currentTokenCount + sentenceTokens > maxTokens) {
+        break;
+      }
+      trimmedText += sentence + " ";
+      currentTokenCount += sentenceTokens;
+    }
+    return trimmedText.trim() || enc.decode(tokens.slice(0, maxTokens));
   } catch (error) {
     console.error(`Error trimming prompt for ${modelConfig.name}:`, error);
     return text;
@@ -191,8 +202,190 @@ function trimPrompt(
 }
 
 // -----------------------------
-// Helper: getImageDimensions with Caching
+// Helper: analyzeImagesWithVision (Enhanced JSON Validation)
 // -----------------------------
+// -----------------------------
+// Helper: analyzeImagesWithVision (Enhanced JSON Validation)
+// -----------------------------
+async function analyzeImagesWithVision(
+  urls: string[],
+): Promise<AnalyzedImage[]> {
+  try {
+    // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.MEDIA.name,
+      messages: [
+        {
+          role: "system",
+          content:
+            'You are a precise JSON generator for vision analysis. Your response must be ONLY valid JSON, with no additional text, comments, or formatting. The JSON must follow this exact schema: { "images": [ { "url": string, "isUseful": boolean, "title": string, "description": string } ] }. Do not include any explanations or markdown formatting.',
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Analyze these images and determine which ones could be useful for research purposes. Respond with ONLY valid JSON:\n${JSON.stringify(urls)}`,
+            },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error("Empty response from vision analysis");
+      return urls.map((url) => ({ url, isUseful: false }));
+    }
+
+    let parsedContent;
+    try {
+      parsedContent = JSON.parse(content);
+
+      if (!Array.isArray(parsedContent.images)) {
+        console.error(
+          "Invalid response structure from vision analysis:",
+          content,
+        );
+        return urls.map((url) => ({ url, isUseful: false }));
+      }
+
+      // Additional validation of the parsed content
+      const isValidImage = (img: any): img is AnalyzedImage => {
+        return (
+          typeof img.url === "string" &&
+          typeof img.isUseful === "boolean" &&
+          (!img.title || typeof img.title === "string") &&
+          (!img.description || typeof img.description === "string")
+        );
+      };
+
+      const validImages = parsedContent.images.filter(isValidImage);
+      if (validImages.length === 0) {
+        console.error("No valid image analysis results found");
+        return urls.map((url) => ({ url, isUseful: false }));
+      }
+
+      return validImages;
+    } catch (error) {
+      console.error("Failed to parse vision analysis response:", error);
+      console.error("Raw response content:", content);
+      return urls.map((url) => ({ url, isUseful: false }));
+    }
+  } catch (error) {
+    console.error("Error in batch vision analysis:", error);
+    return urls.map((url) => ({ url, isUseful: false }));
+  }
+}
+
+// -----------------------------
+// Helper: detectMediaContent
+// -----------------------------
+async function detectMediaContent(url: string): Promise<MediaContent[]> {
+  if (!url) {
+    console.warn("Received empty URL in detectMediaContent");
+    return [];
+  }
+
+  try {
+    // Use our new utility to fetch HTML with a 5-second timeout
+    const html = await fetchWithTimeout(url, 5000);
+    const mediaContent: MediaContent[] = [];
+
+    // Process YouTube videos (existing code remains unchanged)
+    const youtubeRegex =
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
+
+    for (const match of youtubeMatches) {
+      const videoId = match[1];
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+      const isValid = await isYouTubeVideoValid(videoUrl);
+      if (isValid) {
+        mediaContent.push({
+          type: "video",
+          url: videoUrl,
+          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
+        });
+      }
+    }
+
+    // Enhanced batch image detection
+    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
+    const imgMatches = Array.from(html.matchAll(imgRegex));
+    const imageUrls: string[] = [];
+
+    // Collect and normalize image URLs
+    for (const match of imgMatches) {
+      let imgUrl = match[1];
+      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
+
+      // Skip images with undesired keywords
+      if (
+        imgUrl.includes("icon") ||
+        imgUrl.includes("logo") ||
+        imgUrl.includes("spacer")
+      ) {
+        continue;
+      }
+
+      // Handle relative URLs
+      if (imgUrl.startsWith("/")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+      } else if (!imgUrl.startsWith("http")) {
+        const urlObj = new URL(url);
+        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
+      }
+
+      imageUrls.push(imgUrl);
+    }
+
+    // Batch analyze images with vision model
+    if (imageUrls.length > 0) {
+      const analyzedImages = await analyzeImagesWithVision(imageUrls);
+
+      // Only check dimensions for useful images
+      for (const image of analyzedImages) {
+        if (image.isUseful) {
+          try {
+            const dimensions = await getImageDimensions(image.url);
+            if (
+              dimensions &&
+              dimensions.width >= 400 &&
+              dimensions.width <= 2500
+            ) {
+              mediaContent.push({
+                type: "image",
+                url: image.url,
+                title: image.title,
+                description: image.description,
+              });
+            }
+          } catch (error) {
+            console.error(
+              "Error processing image dimensions:",
+              image.url,
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    return mediaContent;
+  } catch (error) {
+    console.error("Error detecting media content:", error);
+    return [];
+  }
+}
+
+// -----------------------------
+// Helper: image dimensions new
+// -----------------------------
+// New helper function for getting image dimensions
 async function getImageDimensions(
   imageUrl: string,
 ): Promise<{ width: number; height: number } | null> {
@@ -222,160 +415,50 @@ async function getImageDimensions(
   }
 }
 
-// -----------------------------
-// Helper: analyzeImageWithVision
-// -----------------------------
-async function analyzeImagesWithVision(urls: string[]): Promise<AnalyzedImage[]> {
+// New helper function for vision analysis
+async function analyzeImageWithVision(imageUrl: string): Promise<{
+  isUseful: boolean;
+  title?: string;
+  description?: string;
+}> {
   try {
     // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
     const response = await openai.chat.completions.create({
-      model: MODEL_CONFIG.MEDIA,
+      model: MODEL_CONFIG.MEDIA.name,
       messages: [
         {
           role: "system",
-          content: "You are a precise JSON generator for vision analysis. Your response must be ONLY valid JSON, with no additional text, comments, or formatting. The JSON must follow this exact schema: { \"images\": [ { \"url\": string, \"isUseful\": boolean, \"title\": string, \"description\": string } ] }. Do not include any explanations or markdown formatting.",
+          content:
+            "You are a visual analysis assistant. Analyze the image at the given URL and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: `Analyze these images and determine which ones could be useful for research purposes. Respond with ONLY valid JSON:\n${JSON.stringify(urls)}`,
-            }
+              text: "Analyze this image and determine if it's useful for research purposes:",
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+              },
+            },
           ],
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 150,
     });
 
     const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.error("Empty response from vision analysis");
-      return urls.map(url => ({ url, isUseful: false }));
+    if (!content || !content.trim().startsWith("{")) {
+      return { isUseful: false };
     }
-
-    let parsedContent;
-    try {
-      parsedContent = JSON.parse(content);
-
-      if (!Array.isArray(parsedContent.images)) {
-        console.error("Invalid response structure from vision analysis:", content);
-        return urls.map(url => ({ url, isUseful: false }));
-      }
-
-      // Additional validation of the parsed content
-      const isValidImage = (img: any): img is AnalyzedImage => {
-        return typeof img.url === 'string' &&
-               typeof img.isUseful === 'boolean' &&
-               (!img.title || typeof img.title === 'string') &&
-               (!img.description || typeof img.description === 'string');
-      };
-
-      const validImages = parsedContent.images.filter(isValidImage);
-      if (validImages.length === 0) {
-        console.error("No valid image analysis results found");
-        return urls.map(url => ({ url, isUseful: false }));
-      }
-
-      return validImages;
-    } catch (error) {
-      console.error("Failed to parse vision analysis response:", error);
-      console.error("Raw response content:", content);
-      return urls.map(url => ({ url, isUseful: false }));
-    }
+    return JSON.parse(content);
   } catch (error) {
-    console.error("Error in batch vision analysis:", error);
-    return urls.map(url => ({ url, isUseful: false }));
-  }
-}
-
-// -----------------------------
-// Helper: detectMediaContent
-// -----------------------------
-async function detectMediaContent(url: string): Promise<MediaContent[]> {
-  if (!url) {
-    console.warn("Received empty URL in detectMediaContent");
-    return [];
-  }
-
-  try {
-    // Use our new utility to fetch HTML with a 5-second timeout
-    const html = await fetchWithTimeout(url, 5000);
-    const mediaContent: MediaContent[] = [];
-
-    // Process YouTube videos (existing code remains unchanged)
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
-    const youtubeMatches = Array.from(html.matchAll(youtubeRegex));
-
-    for (const match of youtubeMatches) {
-      const videoId = match[1];
-      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-      const isValid = await isYouTubeVideoValid(videoUrl);
-      if (isValid) {
-        mediaContent.push({
-          type: "video",
-          url: videoUrl,
-          embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
-        });
-      }
-    }
-
-    // Enhanced batch image detection
-    const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/g;
-    const imgMatches = Array.from(html.matchAll(imgRegex));
-    const imageUrls: string[] = [];
-
-    // Collect and normalize image URLs
-    for (const match of imgMatches) {
-      let imgUrl = match[1];
-      if (!imgUrl || !imgUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) continue;
-
-      // Skip images with undesired keywords
-      if (imgUrl.includes("icon") || imgUrl.includes("logo") || imgUrl.includes("spacer")) {
-        continue;
-      }
-
-      // Handle relative URLs
-      if (imgUrl.startsWith("/")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
-      } else if (!imgUrl.startsWith("http")) {
-        const urlObj = new URL(url);
-        imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
-      }
-
-      imageUrls.push(imgUrl);
-    }
-
-    // Batch analyze images with vision model
-    if (imageUrls.length > 0) {
-      const analyzedImages = await analyzeImagesWithVision(imageUrls);
-
-      // Only check dimensions for useful images
-      for (const image of analyzedImages) {
-        if (image.isUseful) {
-          try {
-            const dimensions = await getImageDimensions(image.url);
-            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
-              mediaContent.push({
-                type: "image",
-                url: image.url,
-                title: image.title,
-                description: image.description,
-              });
-            }
-          } catch (error) {
-            console.error("Error processing image dimensions:", image.url, error);
-          }
-        }
-      }
-    }
-
-    return mediaContent;
-  } catch (error) {
-    console.error("Error detecting media content:", error);
-    return [];
+    console.error("Vision analysis error for", imageUrl, error);
+    return { isUseful: false };
   }
 }
 
@@ -657,21 +740,21 @@ async function formatReport(
     const response = await openai.chat.completions.create({
       model: modelConfig.name,
       messages: [
+        // In formatReport, update the system message to something like:
         {
           role: "system",
-          content: `Generate an engaging content piece encompassing your vast knowledge and given findings to thoroughly answer the users explicit and implicit question, to engage them in the topic and wow them with your capabilities while adhering to these guidelines:
-- Use markdown formatting for structure and content
-- Use headings to organize sections
-- Incorporate a section for key findings near the beginning
-- Use writing style that is appropriate given the context of the query
-- Use tabular data to display findings where relevant
-- Incorporate media references where relevant, using proper markdown image syntax ![description](url) 
-- Place relevant images near their related content
-- For each image or video, include a brief caption explaining its relevance
-- Use markdown formatting for structure
-- Cite sources using footnotes
-- Conclude with key insights and recommendations
-- Include a sources section`,
+          content: `You are creating a comprehensive piece of content that incorporates both textual findings and rich media content. Use markdown to expertly craft the content, with markdown formatting for footnotes to sources, with markdown tables and markdown for media where appropriate within your output. Generate a verbose output (at least 3000 tokens if the context permits). When referencing media content:
+        - For videos: Include them as embedded content using provided embed codes or as markdown links.
+        - For images: Include them using markdown image syntax.
+        - For other media types: Include them as markdown links.
+        - For sources: Use footnotes to reference the source.
+        - For comparisons: Include a markdown table if appropriate for the context.
+        Important Rules to Always Follow:
+        - Structure the content so it flows naturally.
+        - Adjust your style—including voice and tone—based on the user's needs.
+        - Use the provided findings and media content along with your expertise to deliver an incredible work product comprised of a balanced mix of media, images, sources, and videos.
+        - Pay attention to the structure requested by the user and adhere to it as closely as possible.
+        - Ensure the markdown output is fully renderable by common markdown viewers.`,
         },
         { role: "user", content: JSON.stringify(context) },
       ],
