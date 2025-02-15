@@ -30,25 +30,25 @@ const imageDimensionCache = new LRUCache<
   ttl: 1000 * 60 * 60,
 });
 
-// Enhanced model configuration
+// Update MODEL_CONFIG to use specific number literals
 const MODEL_CONFIG = {
   BALANCED: {
-    name: "gpt-4o-2024-11-20",
-    maxTokens: 100000,
-    summaryTokens: 8000,
-    tokenizer: "cl100k_base",
+    name: "gpt-4o-2024-11-20" as const,
+    maxTokens: 100_000 as const,
+    summaryTokens: 8_000 as const,
+    tokenizer: "cl100k_base" as const,
   },
   DEEP: {
-    name: "o3-mini-2025-01-31",
-    maxTokens: 100000,
-    summaryTokens: 12000,
-    tokenizer: "cl100k_base",
+    name: "o3-mini-2025-01-31" as const,
+    maxTokens: 100_000 as const,
+    summaryTokens: 12_000 as const,
+    tokenizer: "cl100k_base" as const,
   },
   MEDIA: {
-    name: "gpt-4o-mini-2024-07-18",
-    maxTokens: 16000,
-    summaryTokens: 4000,
-    tokenizer: "cl100k_base",
+    name: "gpt-4o-mini-2024-07-18" as const,
+    maxTokens: 16_000 as const,
+    summaryTokens: 4_000 as const,
+    tokenizer: "cl100k_base" as const,
   },
 } as const;
 
@@ -160,28 +160,20 @@ function trimPrompt(
   modelConfig: (typeof MODEL_CONFIG)[keyof typeof MODEL_CONFIG],
 ): string {
   try {
-    // const tokenizerName = "cl100k_base"; // Always use cl100k_base tokenizer
     const enc = encodingForModel("gpt-4");
-
     const tokens = enc.encode(text);
-
     let maxTokens = modelConfig.maxTokens;
-    // Adjust token limits based on model context
     if (modelConfig.name.includes("gpt-4o")) {
       maxTokens = Math.min(maxTokens, 100000);
     } else if (modelConfig.name.includes("o3-mini")) {
       maxTokens = Math.min(maxTokens, 100000);
     }
-
     if (tokens.length <= maxTokens) {
       return text;
     }
-
     console.warn(
       `Prompt exceeds token limit (${tokens.length} > ${maxTokens}) for model ${modelConfig.name}. Trimming prompt.`,
     );
-
-    // Trim to token limit and decode back to text
     const trimmedTokens = tokens.slice(0, maxTokens);
     return enc.decode(trimmedTokens);
   } catch (error) {
@@ -230,44 +222,52 @@ async function getImageDimensions(
   }
 }
 
-// -----------------------------
-// Helper: analyzeImageWithVision
-// -----------------------------
+// Helper: analyzeImageWithVision (updated with proper types)
 async function analyzeImageWithVision(
-  imageUrl: string,
-): Promise<{ isUseful: boolean; title?: string; description?: string }> {
+  imageUrls: string[],
+): Promise<Array<{ isUseful: boolean; title?: string; description?: string }>> {
   try {
+    // Define properly typed messages array
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: "You are a visual analysis assistant. Analyze the images and respond in a JSON array where each element corresponds to one image. Each element should have keys: isUseful (boolean), title (a short descriptive title), and description (a short description). Only return valid JSON."
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Analyze these images and determine if they are useful for research purposes:"
+          },
+          ...imageUrls.map((url) => ({
+            type: "image_url",
+            image_url: { url }
+          }))
+        ]
+      }
+    ];
+
     const response = await openai.chat.completions.create({
       model: MODEL_CONFIG.MEDIA.name,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a visual analysis assistant. Analyze the image and respond in JSON with keys: isUseful (boolean), title (short descriptive title), description (short description). Only return valid JSON.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            prompt:
-              "Analyze this image and determine if it's useful for research purposes:",
-            image_url: imageUrl,
-          }),
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 150,
+      messages,
+      max_tokens: Math.min(150 * imageUrls.length, MODEL_CONFIG.MEDIA.maxTokens),
+      response_format: { type: "json_object" }
     });
+
     const content = response.choices[0]?.message?.content;
-    if (!content || !content.trim().startsWith("{")) return { isUseful: false };
+    if (!content || !content.trim().startsWith("[")) {
+      return imageUrls.map(() => ({ isUseful: false }));
+    }
     return JSON.parse(content);
   } catch (error) {
-    console.error("Vision analysis error for", imageUrl, error);
-    return { isUseful: false };
+    console.error("Vision analysis error for images", imageUrls, error);
+    return imageUrls.map(() => ({ isUseful: false }));
   }
 }
 
 // -----------------------------
-// Helper: detectMediaContent
+// Helper: detectMediaContent (updated)
 // -----------------------------
 async function detectMediaContent(url: string): Promise<MediaContent[]> {
   if (!url) {
@@ -278,33 +278,27 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
     const html = await fetchWithTimeout(url, 5000);
     const mediaContent: MediaContent[] = [];
 
-    // Process YouTube videos
     const youtubeRegex =
       /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
     const youtubeMatches = html.matchAll(youtubeRegex);
     for (const match of Array.from(youtubeMatches)) {
       const videoId = match[1];
       const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log(`Validating YouTube video: ${videoUrl}`);
       if (await isYouTubeVideoValid(videoUrl)) {
         mediaContent.push({
           type: "video",
           url: videoUrl,
           embedCode: `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`,
         });
-        console.log(`Added valid YouTube video: ${videoUrl}`);
       }
     }
 
-    // Enhanced image processing
     const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
     const imgMatches = html.matchAll(imgRegex);
     const imageUrls = new Set<string>();
 
     for (const match of Array.from(imgMatches)) {
       let imgUrl = match[1];
-
-      // Skip common non-content images
       if (
         imgUrl.includes("icon") ||
         imgUrl.includes("logo") ||
@@ -315,8 +309,6 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         console.log(`Skipping non-content image: ${imgUrl}`);
         continue;
       }
-
-      // Convert relative URLs to absolute
       if (imgUrl.startsWith("/")) {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
@@ -324,43 +316,39 @@ async function detectMediaContent(url: string): Promise<MediaContent[]> {
         const urlObj = new URL(url);
         imgUrl = `${urlObj.protocol}//${urlObj.host}/${imgUrl}`;
       }
+      imageUrls.add(imgUrl);
+    }
 
-      // Only process each unique image URL once
-      if (!imageUrls.has(imgUrl)) {
-        imageUrls.add(imgUrl);
+    const imageBatchSize = 10;
+    const imageUrlsArray = Array.from(imageUrls);
 
-        try {
-          console.log(`Analyzing image: ${imgUrl}`);
-          const analysis = await analyzeImageWithVision(imgUrl);
-
-          if (analysis.isUseful) {
-            const dimensions = await getImageDimensions(imgUrl);
-
-            if (
-              dimensions &&
-              dimensions.width >= 400 &&
-              dimensions.width <= 2500
-            ) {
-              console.log(`Adding useful image: ${imgUrl}`);
+    for (let i = 0; i < imageUrlsArray.length; i += imageBatchSize) {
+      const batch = imageUrlsArray.slice(i, i + imageBatchSize);
+      try {
+        const dimensionsPromises = batch.map(getImageDimensions);
+        const dimensionsResults = await Promise.all(dimensionsPromises);
+        const validImages = batch.filter((_, index) => {
+          const dimensions = dimensionsResults[index];
+          return dimensions && dimensions.width >= 400 && dimensions.width <= 2500;
+        });
+        if (validImages.length > 0) {
+          const analyses = await analyzeImageWithVision(validImages);
+          analyses.forEach((analysis, index) => {
+            if (analysis.isUseful) {
               mediaContent.push({
                 type: "image",
-                url: imgUrl,
+                url: validImages[index],
                 title: analysis.title,
                 description: analysis.description,
               });
-            } else {
-              console.log(`Skipping image due to dimensions: ${imgUrl}`);
             }
-          }
-        } catch (error) {
-          console.error(`Error processing image ${imgUrl}:`, error);
+          });
         }
+      } catch (error) {
+        console.error(`Error processing image batch:`, error);
       }
     }
 
-    console.log(
-      `Successfully processed ${mediaContent.length} media items from ${url}`,
-    );
     return mediaContent;
   } catch (error) {
     console.error(`Error detecting media content from ${url}:`, error);
@@ -779,7 +767,6 @@ async function researchQuery(
 
     const urls = parsedResult.data.data.map((item) => item.url);
 
-    // Fetch pages directly
     console.log(`Fetching ${urls.length} pages for detailed content analysis`);
     const rawHtmlPromises = urls.map((url) => fetchWithTimeout(url, 5000));
     const rawHtmlResults = await Promise.allSettled(rawHtmlPromises);
@@ -797,19 +784,15 @@ async function researchQuery(
         (result): result is { url: string; html: string } => result !== null,
       );
 
-    // Process both Firecrawl content and fetched HTML
     const findings: string[] = [];
 
-    // Add Firecrawl findings first
     const firecrawlFindings = parsedResult.data.data
       .map((item) => item.content || "")
       .filter((content) => content.trim() !== "");
     findings.push(...firecrawlFindings);
 
-    // Add extracted content from HTML
     for (const { url, html } of extractedContent) {
       try {
-        // Extract main content from HTML (avoiding navigation, headers, footers)
         const contentMatch =
           html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
           html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
@@ -826,7 +809,6 @@ async function researchQuery(
             .trim();
 
           if (textContent.length > 100) {
-            // Only add substantial content
             findings.push(`From ${url}: ${textContent}`);
           }
         }
@@ -835,13 +817,11 @@ async function researchQuery(
       }
     }
 
-    // If no findings were gathered, provide a placeholder
     if (findings.length === 0) {
       console.warn(`No usable content found for query: ${query}`);
       findings.push("No relevant findings available for this query.");
     }
 
-    // Detect media content from the fetched pages
     const mediaPromises = extractedContent.map(({ url }) =>
       detectMediaContent(url),
     );
@@ -907,7 +887,6 @@ async function handleResearch(
         `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
       );
 
-      // Update progress before starting the batch
       const startMetrics = calculateProgressMetrics(context);
       sendProgress(
         constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
@@ -918,7 +897,6 @@ async function handleResearch(
           console.log(`Executing query: ${query}`);
           const result = await researchQuery(query);
 
-          // Send progress update after each query completion
           const queryMetrics = calculateProgressMetrics({
             ...context,
             processedQueries: context.processedQueries + 1,
@@ -943,7 +921,6 @@ async function handleResearch(
         context.visitedUrls.push(...result.urls);
         context.media.push(...result.media);
 
-        // Send progress update after processing each batch of findings
         const batchMetrics = calculateProgressMetrics(context);
         sendProgress(
           constructProgressUpdate(context, "IN_PROGRESS", batchMetrics),
