@@ -96,6 +96,19 @@ export const mediaContentSchema = z.object({
   embedCode: z.string().optional(),
 });
 
+// Add new types for metadata after line 69
+export interface ResearchMetadata {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  url: string;
+}
+
+export interface StructuredContent {
+  relevant_content: string;
+  relevant_images: string[];
+}
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertResearchReport = z.infer<typeof insertResearchReportSchema>;
@@ -120,7 +133,7 @@ export const researchSchema = z.object({
   fastMode: z.boolean().optional().default(false),
 });
 
-// Update researchProgressSchema to include media content
+// Update researchProgressSchema to include metadata
 export const researchProgressSchema = z.object({
   status: z.enum(['WAITING', 'IN_PROGRESS', 'COMPLETED', 'ERROR']),
   currentQuery: z.string().optional(),
@@ -130,5 +143,11 @@ export const researchProgressSchema = z.object({
   error: z.string().optional(),
   report: z.string().optional(),
   visitedUrls: z.array(z.string()),
-  media: z.array(mediaContentSchema), // Add media array to track media content
+  media: z.array(mediaContentSchema),
+  metadata: z.array(z.object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    ogImage: z.string().optional(),
+    url: z.string(),
+  })).optional(),
 });

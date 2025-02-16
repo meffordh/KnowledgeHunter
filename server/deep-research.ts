@@ -64,6 +64,7 @@ const FirecrawlResult = z.object({
       description: z.string().optional(),
       content: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
+      extractedData: z.record(z.string(), z.unknown()).optional(),
     }),
   ),
 });
@@ -201,9 +202,6 @@ function trimPrompt(
   }
 }
 
-// -----------------------------
-// Helper: analyzeImagesWithVision (Enhanced JSON Validation)
-// -----------------------------
 // -----------------------------
 // Helper: analyzeImagesWithVision (Enhanced JSON Validation)
 // -----------------------------
@@ -859,7 +857,20 @@ async function researchQuery(
   try {
     console.log("Performing research query:", query);
 
-    const fcResult = await firecrawl.search(query);
+    const fcResult = await firecrawl.search(query, {
+      scrape: true,
+      extractorOptions: {
+        extractionSchema: {
+          type: "object",
+          properties: {
+            relevant_content: { type: "string" },
+            relevant_images: { type: "array", items: { type: "string" } },
+          },
+        },
+        prompt: "Extract all information relevant to: " + query,
+      },
+    });
+
     const parsedResult = FirecrawlResult.safeParse(fcResult);
 
     if (!parsedResult.success) {
@@ -871,61 +882,48 @@ async function researchQuery(
       };
     }
 
-    const urls = parsedResult.data.data.map((item) => item.url);
-
-    // Fetch pages directly
-    console.log(`Fetching ${urls.length} pages for detailed content analysis`);
-    const rawHtmlPromises = urls.map((url) => fetchWithTimeout(url, 5000));
-    const rawHtmlResults = await Promise.allSettled(rawHtmlPromises);
-
-    const extractedContent = rawHtmlResults
-      .map((result, index) => {
-        if (result.status === "fulfilled") {
-          return { url: urls[index], html: result.value };
-        } else {
-          console.warn(`Skipping failed fetch for URL: ${urls[index]}`);
-          return null;
-        }
-      })
-      .filter(
-        (result): result is { url: string; html: string } => result !== null,
-      );
-
-    // Process both Firecrawl content and fetched HTML
     const findings: string[] = [];
+    const urls = parsedResult.data.data.map((item) => item.url);
+    const media: MediaContent[] = [];
 
-    // Add Firecrawl findings first
-    const firecrawlFindings = parsedResult.data.data
-      .map((item) => item.content || "")
-      .filter((content) => content.trim() !== "");
-    findings.push(...firecrawlFindings);
+    // Process structured data and metadata from Firecrawl
+    for (const item of parsedResult.data.data) {
+      if (item.extractedData?.relevant_content) {
+        findings.push(`From ${item.url}: ${item.extractedData.relevant_content}`);
+      }
 
-    // Add extracted content from HTML
-    for (const { url, html } of extractedContent) {
-      try {
-        // Extract main content from HTML (avoiding navigation, headers, footers)
-        const contentMatch =
-          html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
-          html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
-          html.match(
-            /<div[^>]*?class="[^"]*?(?:content|main)[^"]*?"[^>]*>([\s\S]*?)<\/div>/i,
-          );
+      // Add metadata-based findings
+      if (item.metadata?.title || item.metadata?.description) {
+        const metadataContent = [
+          item.metadata.title,
+          item.metadata.description,
+        ]
+          .filter(Boolean)
+          .join(" - ");
+        findings.push(`Metadata from ${item.url}: ${metadataContent}`);
+      }
 
-        if (contentMatch) {
-          const textContent = contentMatch[1]
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-
-          if (textContent.length > 100) {
-            // Only add substantial content
-            findings.push(`From ${url}: ${textContent}`);
+      // Process relevant images from extraction
+      if (item.extractedData?.relevant_images) {
+        for (const imageUrl of item.extractedData.relevant_images) {
+          try {
+            const dimensions = await getImageDimensions(imageUrl);
+            if (
+              dimensions &&
+              dimensions.width >= 400 &&
+              dimensions.width <= 2500
+            ) {
+              media.push({
+                type: "image",
+                url: imageUrl,
+                title: item.metadata?.title,
+                description: item.metadata?.description,
+              });
+            }
+          } catch (error) {
+            console.error("Error processing image dimensions:", imageUrl, error);
           }
         }
-      } catch (error) {
-        console.warn(`Error extracting content from ${url}:`, error);
       }
     }
 
@@ -934,13 +932,6 @@ async function researchQuery(
       console.warn(`No usable content found for query: ${query}`);
       findings.push("No relevant findings available for this query.");
     }
-
-    // Detect media content from the fetched pages
-    const mediaPromises = extractedContent.map(({ url }) =>
-      detectMediaContent(url),
-    );
-    const mediaResults = await Promise.all(mediaPromises);
-    const media = mediaResults.flat();
 
     console.log(
       `Found ${findings.length} findings and ${media.length} media items for query: ${query}`,
@@ -982,7 +973,6 @@ async function handleResearch(
     };
 
     let currentQueries = [context.query];
-    let completionConfidence = 0;
 
     console.log("Starting research:", {
       query: research.query,
@@ -992,94 +982,50 @@ async function handleResearch(
     });
 
     while (context.currentDepth < context.totalDepth) {
-      const queries = currentQueries.slice(0, context.totalBreadth);
+      const queriesToProcess = currentQueries.slice(0, context.totalBreadth);
       context = updateResearchContext(context, {
-        currentBreadth: queries.length,
+        currentBreadth: queriesToProcess.length,
       });
 
-      console.log(
-        `Processing depth ${context.currentDepth + 1}/${context.totalDepth} with ${context.currentBreadth} queries`,
-      );
-
-      // Update progress before starting the batch
+      // Update progress before starting this batch
       const startMetrics = calculateProgressMetrics(context);
-      sendProgress(
-        constructProgressUpdate(context, "IN_PROGRESS", startMetrics),
-      );
+      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
 
+      // Process all queries concurrently
       const results = await Promise.all(
-        queries.map(async (query) => {
-          console.log(`Executing query: ${query}`);
+        queriesToProcess.map(async (query) => {
           const result = await researchQuery(query);
-
-          // Send progress update after each query completion
-          const queryMetrics = calculateProgressMetrics({
-            ...context,
-            processedQueries: context.processedQueries + 1,
-          });
-          sendProgress(
-            constructProgressUpdate(context, "IN_PROGRESS", queryMetrics),
-          );
-
-          return result;
-        }),
+          // Optionally generate follow-up queries concurrently if not in fastMode
+          let followUpQueries: string[] = [];
+          if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
+            followUpQueries = await expandQuery(context);
+          }
+          return { result, followUpQueries };
+        })
       );
 
-      let newFindings = 0;
-      for (const result of results) {
-        const processedFindings = await processBatchFindings(
-          result.findings,
-          MODEL_CONFIG.BALANCED,
-          context,
-        );
-        newFindings += processedFindings.length;
-        context.learnings.push(...processedFindings);
+      // Aggregate results from each query
+      const newQueries: string[] = [];
+      results.forEach(({ result, followUpQueries }) => {
+        context.learnings.push(...result.findings);
         context.visitedUrls.push(...result.urls);
         context.media.push(...result.media);
-
-        // Send progress update after processing each batch of findings
-        const batchMetrics = calculateProgressMetrics(context);
-        sendProgress(
-          constructProgressUpdate(context, "IN_PROGRESS", batchMetrics),
-        );
-      }
-
-      context = updateResearchContext(context, {
-        processedQueries: context.processedQueries + queries.length,
+        newQueries.push(...followUpQueries);
       });
 
-      console.log(
-        `Depth ${context.currentDepth + 1}: Found ${newFindings} new findings, processed ${queries.length} queries`,
-      );
+      // Update context for next iteration
+      context = updateResearchContext(context, {
+        processedQueries: context.processedQueries + queriesToProcess.length,
+      });
 
-      const metrics = calculateProgressMetrics(context);
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
-
+      // Check if research is sufficient
       const sufficientResponse = await isResearchSufficient(context);
-      completionConfidence = sufficientResponse.confidence;
-
-      if (
-        sufficientResponse.isComplete &&
-        sufficientResponse.confidence >= 0.8
-      ) {
-        console.log(
-          `Research deemed sufficient with ${(sufficientResponse.confidence * 100).toFixed(1)}% confidence`,
-        );
-        console.log("Reasoning:", sufficientResponse.reasoning);
+      if (sufficientResponse.isComplete && sufficientResponse.confidence >= 0.8) {
         break;
       }
 
-      if (context.currentDepth < context.totalDepth - 1) {
-        currentQueries = await expandQuery(context);
-        if (currentQueries.length === 0) {
-          console.log("No more queries to expand, stopping iteration");
-          break;
-        }
-        console.log(
-          `Generated ${currentQueries.length} follow-up queries for next depth`,
-        );
-      }
-
+      // Set up new queries for the next depth level
+      currentQueries = newQueries;
       context = updateResearchContext(context, {
         currentDepth: context.currentDepth + 1,
         currentBreadth: 0,
@@ -1087,39 +1033,41 @@ async function handleResearch(
       });
     }
 
-    console.log("Generating final report");
+    // Generate final report
     const report = await formatReport(
       context.query,
       context.learnings,
       context.visitedUrls,
-      context.media,
+      context.media
+    );
+
+    // Send final progress update
+    const finalMetrics = calculateProgressMetrics(context);
+    sendProgress(
+      constructProgressUpdate(context, "COMPLETED", finalMetrics, report)
     );
 
     if (onComplete) {
       await onComplete(report, context.visitedUrls);
     }
-
-    console.log("Research completed successfully");
-    const finalMetrics = calculateProgressMetrics(context);
+  } catch (error) {
+    console.error("Research error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown research error";
+    const errorMetrics = calculateProgressMetrics({
+      ...context,
+      currentDepth: 0,
+      totalDepth: 1,
+    });
     sendProgress(
       constructProgressUpdate(
         context,
-        "COMPLETED",
-        { ...finalMetrics, confidence: completionConfidence },
-        report,
-      ),
+        "ERROR",
+        errorMetrics,
+        undefined,
+        errorMessage
+      )
     );
-  } catch (error) {
-    console.error("Error in handleResearch:", error);
-    sendProgress({
-      status: "ERROR",
-      learnings: [],
-      progress: 0,
-      totalProgress: 1,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-      visitedUrls: [],
-      media: [],
-    });
   }
 }
 
