@@ -861,36 +861,22 @@ async function researchQuery(
       scrape: true,
       extractContent: true,
       extractMetadata: true,
-      extractorOptions: {
-        extractionSchema: {
-          type: "object",
-          properties: {
-            relevant_content: { 
-              type: "string",
-              description: "The main content relevant to the query"
-            },
-            summary: {
-              type: "string",
-              description: "A brief summary of the content"
-            },
-            relevant_images: { 
-              type: "array", 
-              items: { type: "string" },
-              description: "URLs of images that are relevant to the content"
-            },
-          },
-          required: ["relevant_content"]
-        },
-        prompt: `Extract detailed information relevant to: ${query}
-                Focus on factual content, numbers, statistics, and specific details.
-                Include any relevant quotes or citations.
-                Ensure the extracted content directly addresses the query.`,
+      scrapeOptions: {
+        waitUntil: 'networkidle0',
+        timeout: 10000
       },
+      extractorOptions: {
+        prompt: `Extract detailed information relevant to: ${query}. Include specific facts, numbers, and key details.`,
+        selector: 'body',
+        includeMetadata: true
+      }
     });
 
     console.log("Raw Firecrawl response:", {
       success: fcResult.success,
       dataCount: fcResult.data?.length,
+      firstItemContent: fcResult.data?.[0]?.content?.substring(0, 100),
+      firstItemMetadata: fcResult.data?.[0]?.metadata
     });
 
     const parsedResult = FirecrawlResult.safeParse(fcResult);
@@ -914,24 +900,15 @@ async function researchQuery(
         url: item.url,
         hasContent: Boolean(item.content),
         contentLength: item.content?.length || 0,
-        hasExtractedData: Boolean(item.extractedData),
         hasMetadata: Boolean(item.metadata),
       });
 
-      // Try different content sources in order of preference
+      // Process content if available
       if (item.content) {
         const content = item.content.trim();
         if (content.length > 0) {
           findings.push(`From ${item.url}: ${content}`);
           console.log(`Added content from ${item.url}, length: ${content.length}`);
-        }
-      }
-
-      if (item.extractedData?.relevant_content) {
-        const extractedContent = item.extractedData.relevant_content.trim();
-        if (extractedContent.length > 0) {
-          findings.push(`Extracted from ${item.url}: ${extractedContent}`);
-          console.log(`Added extracted content from ${item.url}, length: ${extractedContent.length}`);
         }
       }
 
@@ -948,24 +925,6 @@ async function researchQuery(
         if (metadataContent) {
           findings.push(`Metadata from ${item.url}: ${metadataContent}`);
           console.log(`Added metadata from ${item.url}: ${metadataContent.substring(0, 100)}...`);
-        }
-      }
-
-      // Process relevant images
-      if (Array.isArray(item.extractedData?.relevant_images)) {
-        for (const imageUrl of item.extractedData.relevant_images) {
-          try {
-            const dimensions = await getImageDimensions(imageUrl);
-            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
-              media.push({
-                type: "image",
-                url: imageUrl,
-                title: item.metadata?.title as string | undefined,
-                description: item.metadata?.description as string | undefined,              });
-            }
-          } catch (error) {
-            console.error("Error processing image dimensions:", imageUrl, error);
-          }
         }
       }
     }
@@ -1001,12 +960,11 @@ async function handleResearch(
   onComplete?: (report: string, visitedUrls: string[]) => Promise<void>,
 ) {
   const sendProgress = (progress: EnhancedProgress) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(progress));
+    if (ws.readyState === WebSocket.OPEN) {      ws.send(JSON.stringify(progress));
     }
   };
 
-  try {
+  try{
     let context: ResearchContext = {
       query: research.query,
       learnings: [],

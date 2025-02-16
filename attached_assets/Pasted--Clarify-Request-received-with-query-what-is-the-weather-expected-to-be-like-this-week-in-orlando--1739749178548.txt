@@ -1,0 +1,86 @@
+[Clarify] Request received with query: what is the weather expected to be like this week in orlando florida
+[Clarify] Generating clarifying questions for query: what is the weather expected to be like this week in orlando florida
+[Clarify] Generated questions: [
+  'What specific days of the week are you interested in, or do you need a general forecast for the entire week?',
+  'Are you looking for information on temperature, precipitation, wind conditions, or all aspects of the weather?',
+  'Would you like suggestions for specific sources to check the weather forecast, such as a particular app or website?'
+]
+11:36:03 PM [express] POST /api/clarify 200 in 9568ms :: {"questions":["What specific days of the wee…
+WebSocket connection attempt
+Starting research for user: user_2shKPR1HGxiF1xKxsOq4VEtUrMC query: what is the weather expected to be like this week in orlando florida
+Starting research: {
+  query: 'what is the weather expected to be like this week in orlando florida',
+  fastMode: true,
+  maxDepth: 2,
+  maxBreadth: 2
+}
+Starting concurrent processing for query: what is the weather expected to be like this week in orlando florida
+Performing research query: what is the weather expected to be like this week in orlando florida
+Raw Firecrawl response: { success: true, dataCount: 5 }
+Processing item: {
+  url: 'https://weather.com/weather/tenday/l/Orlando+FL?canonicalCityId=b1bb64752b9921f0b125e7c5f07df6c368a52eab5db82010fa6a2b3d4e15473c',
+  hasContent: false,
+  contentLength: 0,
+  hasExtractedData: false,
+  hasMetadata: false
+}
+Processing item: {
+  url: 'https://www.accuweather.com/en/us/orlando/32801/weather-forecast/328169',
+  hasContent: false,
+  contentLength: 0,
+  hasExtractedData: false,
+  hasMetadata: false
+}
+Processing item: {
+  url: 'https://mynews13.com/fl/orlando/weather/7-day-forecast',
+  hasContent: false,
+  contentLength: 0,
+  hasExtractedData: false,
+  hasMetadata: false
+}
+Processing item: {
+  url: 'https://www.timeanddate.com/weather/usa/orlando/ext',
+  hasContent: false,
+  contentLength: 0,
+  hasExtractedData: false,
+  hasMetadata: false
+}
+Processing item: {
+  url: 'https://www.wunderground.com/forecast/us/fl/orlando',
+  hasContent: false,
+  contentLength: 0,
+  hasExtractedData: false,
+  hasMetadata: false
+}
+No usable content found for query: what is the weather expected to be like this week in orlando florida
+Research results for "what is the weather expected to be like this week in orlando florida": {
+  findingsCount: 1,
+  mediaCount: 0,
+  urlsCount: 5,
+  sampleFindings: [ 'No relevant findings available for this query....' ]
+}
+Finished query "what is the weather expected to be like this week in orlando florida": { findingsCount: 1, urlsCount: 5, mediaCount: 0 }
+Depth 1/2 completed: { newFindings: 1, totalFindings: 1, newQueries: 0 }
+Research sufficiency check: {
+  isComplete: false,
+  confidence: 0.5,
+  reasoning: 'The user context provided mentions that no relevant findings are available for the query, meaning the question about the weather in Orlando, Florida, has not been answered yet. Although clarifications are included for specific aspects of the query (entire week, all weather aspects, no source suggestions needed), there is no actual analysis or concrete data about the Orlando forecast included. Thus, the context does not cover key aspects like actual temperatures, precipitation chances, or wind patterns for the week in question. Current progress metrics indicate the query has not been thoroughly processed or resolved.'
+}
+Suggested next steps: [
+  'Gather weather data for Orlando, Florida, for the next 7 days from a reliable weather source such as Weather.com or the National Weather Service.',
+  'Provide an analysis of temperatures, precipitation chances, wind conditions, and other relevant aspects of the weather.',
+  "Reassess and directly address the user's query with the newly gathered information."
+]
+Depth 2/2 completed: { newFindings: 0, totalFindings: 1, newQueries: 0 }
+Research sufficiency check: {
+  isComplete: false,
+  confidence: 0.4,
+  reasoning: 'The user query asks about the expected weather for an entire week in Orlando, Florida, and specifies an interest in all aspects of the weather forecast, including temperature, precipitation, and wind conditions. However, no relevant findings are currently available. The context does not provide specific weather data or a direction on where to gather the required forecast information. Further steps, such as checking trusted weather services like the National Weather Service, AccuWeather, or Weather.com for specific insights, would be needed to answer the query.'
+}
+Suggested next steps: [
+  "Check a reliable weather forecasting service to gather specific details on Orlando, Florida's weather for the week.",
+  'Provide a summary of expected temperatures, precipitation, and wind conditions for the week based on recent forecast data.',
+  'Ensure updates on weather information are as recent as possible to maintain accuracy.'
+]
+Saving research report for user: user_2shKPR1HGxiF1xKxsOq4VEtUrMC
+Research report saved successfully: 112
