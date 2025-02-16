@@ -1,0 +1,159 @@
+firecrawl parallel extraction with metadata
+Below is a detailed step‑by‑step specification for the changes you need to implement. Follow these instructions carefully to update the project so that you:
+
+Use Firecrawl’s scraping API with structured extraction instead of separately fetching and processing pages.
+Collect metadata (like the og image, title, and description) for citation display.
+Process search queries in parallel to speed up the research process.
+
+1. Modify the Research Query Function
+File to Update: server/deep-research.ts
+
+Task:
+Replace the current Firecrawl search call with one that uses the built‑in scrape and extraction features. Specifically:
+
+Set scrape: true in your search options.
+Provide an extractorOptions object that includes:
+An extractionSchema defining the structured data you need (for example, an object with properties relevant_content and relevant_images).
+A prompt that concatenates “Extract all information relevant to:” with the research query.
+Example Code Change:
+
+
+// Modified researchQuery function in deep-research.ts:
+async function researchQuery(query: string): Promise<{ findings: any[]; urls: string[]; media: MediaContent[] }> {
+  try {
+    const fcResult = await firecrawl.search(query, {
+      scrape: true,
+      extractorOptions: {
+        extractionSchema: {
+          type: "object",
+          properties: {
+            relevant_content: { type: "string" },
+            relevant_images: { type: "array", items: { type: "string" } },
+          },
+        },
+        prompt: "Extract all information relevant to: " + query,
+      },
+    });
+
+    return {
+      findings: fcResult.data.map(page => ({
+        content: page.markdown, // raw markdown content
+        metadata: {
+          title: page.metadata?.title,
+          description: page.metadata?.description,
+          ogImage: page.metadata?.ogImage,
+          url: page.url,
+        },
+        structured: page.extractedData, // structured output based on your schema
+      })),
+      urls: fcResult.data.map(page => page.url),
+      media: [], // (if you still need to handle media, you can merge later with your detectMediaContent logic)
+    };
+  } catch (error) {
+    console.error("Firecrawl optimization error:", error);
+    return { findings: [], urls: [], media: [] };
+  }
+}
+
+Note: This change consolidates the extraction step, reducing the need to separately fetch HTML pages after the search. (See Firecrawl README for reference.)
+
+2. Update Shared Schema for Metadata & Structured Content
+File to Update: shared/schema.ts
+
+Task:
+Add new types for metadata so that your final report can show citations.
+Create interfaces (or Zod schemas) for both the metadata and the structured content.
+
+Code Changes:
+// In shared/schema.ts, add these new interfaces:
+export interface ResearchMetadata {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  url: string;
+}
+
+export interface StructuredContent {
+  relevant_content: string;
+  relevant_images: string[];
+}
+
+// Also add a Zod schema for media if needed:
+export const mediaContentSchema = z.object({
+  type: z.enum(['video', 'image']),
+  url: z.string().url(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  embedCode: z.string().optional(),
+});
+
+export type MediaContent = z.infer<typeof mediaContentSchema>;
+
+3. Implement Parallel Processing for Queries
+File to Update: server/deep-research.ts (within the handleResearch function)
+
+Task:
+Change the sequential processing of queries into a parallel model using Promise.all(). This means:
+
+For each depth level, slice the list of queries to the allowed breadth.
+Map these queries into promises that call researchQuery(query) concurrently.
+Await them all together with Promise.all() before proceeding to process their results.
+Example Code Change:
+
+
+// Inside handleResearch() in deep-research.ts, replace the sequential inner loop with this:
+let currentQueries = [context.query];
+
+while (context.currentDepth < context.totalDepth) {
+  const queriesToProcess = currentQueries.slice(0, context.totalBreadth);
+  context = updateResearchContext(context, {
+    currentBreadth: queriesToProcess.length,
+  });
+
+  // Update progress before starting this batch
+  const startMetrics = calculateProgressMetrics(context);
+  sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
+
+  // Process all queries concurrently
+  const results = await Promise.all(
+    queriesToProcess.map(async (query) => {
+      // Optional: update progress per query if needed
+      const result = await researchQuery(query);
+      // Optionally generate follow-up queries concurrently if not in fastMode
+      let followUpQueries: string[] = [];
+      if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
+        followUpQueries = await expandQuery(context);
+      }
+      return { result, followUpQueries };
+    })
+  );
+
+  // Aggregate results from each query
+  const newQueries: string[] = [];
+  results.forEach(({ result, followUpQueries }) => {
+    // Process findings (if needed, further summarize via processBatchFindings)
+    context.learnings.push(...result.findings);
+    context.visitedUrls.push(...result.urls);
+    context.media.push(...result.media);
+    newQueries.push(...followUpQueries);
+  });
+
+  // Update context for next iteration
+  context = updateResearchContext(context, {
+    processedQueries: context.processedQueries + queriesToProcess.length,
+  });
+
+  // Check if research is sufficient
+  const sufficientResponse = await isResearchSufficient(context);
+  if (sufficientResponse.isComplete && sufficientResponse.confidence >= 0.8) {
+    break;
+  }
+
+  // Set up new queries for the next depth level
+  currentQueries = newQueries;
+  context = updateResearchContext(context, {
+    currentDepth: context.currentDepth + 1,
+    currentBreadth: 0,
+    batchesInCurrentDepth: 0,
+  });
+}
