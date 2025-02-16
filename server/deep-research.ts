@@ -895,22 +895,26 @@ async function researchQuery(
     for (const item of parsedResult.data.data) {
       console.log("Processing item:", {
         url: item.url,
+        hasContent: Boolean(item.content),
+        contentLength: item.content?.length || 0,
         hasExtractedData: Boolean(item.extractedData),
         hasMetadata: Boolean(item.metadata),
-        contentLength: item.content?.length || 0,
       });
 
-      // First try to use the extracted data
-      if (item.extractedData?.relevant_content) {
-        const content = item.extractedData.relevant_content.trim();
-        if (content) {
-          findings.push(`From ${item.url}: ${content}`);
-        }
-      } else if (item.content) {
-        // Fallback to raw content if available
+      // Try different content sources in order of preference
+      if (item.content) {
         const content = item.content.trim();
-        if (content) {
+        if (content.length > 0) {
           findings.push(`From ${item.url}: ${content}`);
+          console.log(`Added content from ${item.url}, length: ${content.length}`);
+        }
+      }
+
+      if (item.extractedData?.relevant_content) {
+        const extractedContent = item.extractedData.relevant_content.trim();
+        if (extractedContent.length > 0) {
+          findings.push(`Extracted from ${item.url}: ${extractedContent}`);
+          console.log(`Added extracted content from ${item.url}, length: ${extractedContent.length}`);
         }
       }
 
@@ -926,25 +930,23 @@ async function researchQuery(
 
         if (metadataContent) {
           findings.push(`Metadata from ${item.url}: ${metadataContent}`);
+          console.log(`Added metadata from ${item.url}: ${metadataContent.substring(0, 100)}...`);
         }
       }
 
-      // Process relevant images from extraction
-      if (item.extractedData?.relevant_images) {
+      // Process relevant images
+      if (Array.isArray(item.extractedData?.relevant_images)) {
         for (const imageUrl of item.extractedData.relevant_images) {
           try {
             const dimensions = await getImageDimensions(imageUrl);
-            if (
-              dimensions &&
-              dimensions.width >= 400 &&
-              dimensions.width <= 2500
-            ) {
+            if (dimensions && dimensions.width >= 400 && dimensions.width <= 2500) {
               media.push({
                 type: "image",
                 url: imageUrl,
-                title: item.metadata?.title,
-                description: item.metadata?.description,
+                title: item.metadata?.title as string | undefined,
+                description: item.metadata?.description as string | undefined,
               });
+              console.log(`Added image from ${item.url}: ${imageUrl}`);
             }
           } catch (error) {
             console.error("Error processing image dimensions:", imageUrl, error);
@@ -960,8 +962,7 @@ async function researchQuery(
     }
 
     console.log(
-      `Research results for "${query}":`,
-      {
+      `Research results for "${query}":`,      {
         findingsCount: findings.length,
         mediaCount: media.length,
         urlsCount: urls.length,
@@ -972,7 +973,7 @@ async function researchQuery(
     return { findings, urls, media };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
-        return { findings: ["Error retrieving results."], urls: [], media: [] };
+    return { findings: ["Error retrieving results."], urls: [], media: [] };
   }
 }
 
