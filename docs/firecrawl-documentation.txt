@@ -1,0 +1,1055 @@
+Get Started
+Welcome to V1
+Firecrawl allows you to turn entire websites into LLM-ready markdown
+
+Firecrawl V1 is here! With that we introduce a more reliable and developer friendly API.
+
+Here is what’s new:
+
+Output Formats for /scrape. Choose what formats you want your output in.
+New /map endpoint for getting most of the URLs of a webpage.
+Developer friendly API for /crawl/{id} status.
+2x Rate Limits for all plans.
+Go SDK and Rust SDK
+Teams support
+API Key Management in the dashboard.
+onlyMainContent is now default to true.
+/crawl webhooks and websocket support.
+​
+Scrape Formats
+You can now choose what formats you want your output in. You can specify multiple output formats. Supported formats are:
+
+Markdown (markdown)
+HTML (html)
+Raw HTML (rawHtml) (with no modifications)
+Screenshot (screenshot or screenshot@fullPage)
+Links (links)
+Extract (extract) - structured output
+Output keys will match the format you choose.
+
+
+Python
+
+Node
+
+Go
+
+Rust
+
+cURL
+
+import FirecrawlApp, { ScrapeResponse } from '@mendable/firecrawl-js';
+
+const app = new FirecrawlApp({apiKey: "fc-YOUR_API_KEY"});
+
+// Scrape a website:
+const scrapeResult = await app.scrapeUrl('firecrawl.dev', { formats: ['markdown', 'html'] }) as ScrapeResponse;
+
+if (!scrapeResult.success) {
+  throw new Error(`Failed to scrape: ${scrapeResult.error}`)
+}
+
+console.log(scrapeResult)
+​
+Response
+SDKs will return the data object directly. cURL will return the payload exactly as shown below.
+
+
+{
+  "success": true,
+  "data" : {
+    "markdown": "Launch Week I is here! [See our Day 2 Release 🚀](https://www.firecrawl.dev/blog/launch-week-i-day-2-doubled-rate-limits)[💥 Get 2 months free...",
+    "html": "<!DOCTYPE html><html lang=\"en\" class=\"light\" style=\"color-scheme: light;\"><body class=\"__variable_36bd41 __variable_d7dc5d font-inter ...",
+    "metadata": {
+      "title": "Home - Firecrawl",
+      "description": "Firecrawl crawls and converts any website into clean markdown.",
+      "language": "en",
+      "keywords": "Firecrawl,Markdown,Data,Mendable,Langchain",
+      "robots": "follow, index",
+      "ogTitle": "Firecrawl",
+      "ogDescription": "Turn any website into LLM-ready data.",
+      "ogUrl": "https://www.firecrawl.dev/",
+      "ogImage": "https://www.firecrawl.dev/og.png?123",
+      "ogLocaleAlternate": [],
+      "ogSiteName": "Firecrawl",
+      "sourceURL": "https://firecrawl.dev",
+      "statusCode": 200
+    }
+  }
+}
+​
+Introducing /map (Alpha)
+The easiest way to go from a single url to a map of the entire website.
+
+​
+Usage
+
+Python
+
+Node
+
+Go
+
+Rust
+
+cURL
+
+import FirecrawlApp, { MapResponse } from '@mendable/firecrawl-js';
+
+const app = new FirecrawlApp({apiKey: "fc-YOUR_API_KEY"});
+
+const mapResult = await app.mapUrl('https://firecrawl.dev') as MapResponse;
+
+if (!mapResult.success) {
+    throw new Error(`Failed to map: ${mapResult.error}`)
+}
+
+console.log(mapResult)
+​
+Response
+SDKs will return the data object directly. cURL will return the payload exactly as shown below.
+
+
+{
+  "status": "success",
+  "links": [
+    "https://firecrawl.dev",
+    "https://www.firecrawl.dev/pricing",
+    "https://www.firecrawl.dev/blog",
+    "https://www.firecrawl.dev/playground",
+    "https://www.firecrawl.dev/smart-crawl",
+    ...
+  ]
+}
+​
+WebSockets
+To crawl a website with WebSockets, use the Crawl URL and Watch method.
+
+
+Python
+
+Node
+
+const watch = await app.crawlUrlAndWatch('mendable.ai', { excludePaths: ['blog/*'], limit: 5});
+
+watch.addEventListener("document", doc => {
+  console.log("DOC", doc.detail);
+});
+
+watch.addEventListener("error", err => {
+  console.error("ERR", err.detail.error);
+});
+
+watch.addEventListener("done", state => {
+  console.log("DONE", state.detail.status);
+});
+​
+Extract format
+LLM extraction is now available in v1 under the extract format. To extract structured from a page, you can pass a schema to the endpoint or just provide a prompt.
+
+
+Python
+
+Node
+
+cURL
+
+import FirecrawlApp from "@mendable/firecrawl-js";
+import { z } from "zod";
+
+const app = new FirecrawlApp({
+  apiKey: "fc-YOUR_API_KEY"
+});
+
+// Define schema to extract contents into
+const schema = z.object({
+  company_mission: z.string(),
+  supports_sso: z.boolean(),
+  is_open_source: z.boolean(),
+  is_in_yc: z.boolean()
+});
+
+const scrapeResult = await app.scrapeUrl("https://docs.firecrawl.dev/", {
+  formats: ["json"],
+  jsonOptions: { schema: schema }
+});
+
+if (!scrapeResult.success) {
+  throw new Error(`Failed to scrape: ${scrapeResult.error}`)
+}
+
+console.log(scrapeResult.extract);
+Output:
+
+JSON
+
+{
+    "success": true,
+    "data": {
+      "json": {
+        "company_mission": "Train a secure AI on your technical resources that answers customer and employee questions so your team doesn't have to",
+        "supports_sso": true,
+        "is_open_source": false,
+        "is_in_yc": true
+      },
+      "metadata": {
+        "title": "Mendable",
+        "description": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+        "robots": "follow, index",
+        "ogTitle": "Mendable",
+        "ogDescription": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+        "ogUrl": "https://docs.firecrawl.dev/",
+        "ogImage": "https://docs.firecrawl.dev/mendable_new_og1.png",
+        "ogLocaleAlternate": [],
+        "ogSiteName": "Mendable",
+        "sourceURL": "https://docs.firecrawl.dev/"
+      },
+    }
+}
+​
+Extracting without schema (New)
+You can now extract without a schema by just passing a prompt to the endpoint. The llm chooses the structure of the data.
+
+
+cURL
+
+curl -X POST https://api.firecrawl.dev/v1/scrape \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev/",
+      "formats": ["json"],
+      "jsonOptions": {
+        "prompt": "Extract the company mission from the page."
+      }
+    }'
+Output:
+
+JSON
+
+{
+    "success": true,
+    "data": {
+      "json": {
+        "company_mission": "Train a secure AI on your technical resources that answers customer and employee questions so your team doesn't have to",
+      },
+      "metadata": {
+        "title": "Mendable",
+        "description": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+        "robots": "follow, index",
+        "ogTitle": "Mendable",
+        "ogDescription": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+        "ogUrl": "https://docs.firecrawl.dev/",
+        "ogImage": "https://docs.firecrawl.dev/mendable_new_og1.png",
+        "ogLocaleAlternate": [],
+        "ogSiteName": "Mendable",
+        "sourceURL": "https://docs.firecrawl.dev/"
+      },
+    }
+}
+​
+New Crawl Webhook
+You can now pass a webhook parameter to the /crawl endpoint. This will send a POST request to the URL you specify when the crawl is started, updated and completed.
+
+The webhook will now trigger for every page crawled and not just the whole result at the end.
+
+cURL
+
+curl -X POST https://api.firecrawl.dev/v1/crawl \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev",
+      "limit": 100,
+      "webhook": "https://example.com/webhook"
+    }'
+​
+Webhook Events
+There are now 4 types of events:
+
+crawl.started - Triggered when the crawl is started.
+crawl.page - Triggered for every page crawled.
+crawl.completed - Triggered when the crawl is completed to let you know it’s done.
+crawl.failed - Triggered when the crawl fails.
+​
+Webhook Response
+success - If the webhook was successful in crawling the page correctly.
+type - The type of event that occurred.
+id - The ID of the crawl.
+data - The data that was scraped (Array). This will only be non empty on crawl.page and will contain 1 item if the page was scraped successfully. The response is the same as the /scrape endpoint.
+error - If the webhook failed, this will contain the error message.
+​
+Migrating from V0
+​
+/scrape endpoint
+The updated /scrape endpoint has been redesigned for enhanced reliability and ease of use. The structure of the new /scrape request body is as follows:
+
+
+{
+  "url": "<string>",
+  "formats": ["markdown", "html", "rawHtml", "links", "screenshot", "json"],
+  "includeTags": ["<string>"],
+  "excludeTags": ["<string>"],
+  "headers": { "<key>": "<value>" },
+  "waitFor": 123,
+  "timeout": 123
+}
+​
+Formats
+You can now choose what formats you want your output in. You can specify multiple output formats. Supported formats are:
+
+Markdown (markdown)
+HTML (html)
+Raw HTML (rawHtml) (with no modifications)
+Screenshot (screenshot or screenshot@fullPage)
+Links (links)
+JSON (json)
+By default, the output will be include only the markdown format.
+
+​
+Details on the new request body
+The table below outlines the changes to the request body parameters for the /scrape endpoint in V1.
+
+Parameter	Change	Description
+onlyIncludeTags	Moved and Renamed	Moved to root level. And renamed to includeTags.
+removeTags	Moved and Renamed	Moved to root level. And renamed to excludeTags.
+onlyMainContent	Moved	Moved to root level. true by default.
+waitFor	Moved	Moved to root level.
+headers	Moved	Moved to root level.
+parsePDF	Moved	Moved to root level.
+extractorOptions	No Change	
+timeout	No Change	
+pageOptions	Removed	No need for pageOptions parameter. The scrape options were moved to root level.
+replaceAllPathsWithAbsolutePaths	Removed	replaceAllPathsWithAbsolutePaths is not needed anymore. Every path is now default to absolute path.
+includeHtml	Removed	add "html" to formats instead.
+includeRawHtml	Removed	add "rawHtml" to formats instead.
+screenshot	Removed	add "screenshot" to formats instead.
+fullPageScreenshot	Removed	add "screenshot@fullPage" to formats instead.
+extractorOptions	Removed	Use "extract" format instead with extract object.
+The new extract format is described in the llm-extract section.
+
+​
+/crawl endpoint
+We’ve also updated the /crawl endpoint on v1. Check out the improved body request below:
+
+
+{
+  "url": "<string>",
+  "excludePaths": ["<string>"],
+  "includePaths": ["<string>"],
+  "maxDepth": 2,
+  "ignoreSitemap": true,
+  "limit": 10,
+  "allowBackwardLinks": true,
+  "allowExternalLinks": true,
+  "scrapeOptions": {
+    // same options as in /scrape
+    "formats": ["markdown", "html", "rawHtml", "screenshot", "links"],
+    "headers": { "<key>": "<value>" },
+    "includeTags": ["<string>"],
+    "excludeTags": ["<string>"],
+    "onlyMainContent": true,
+    "waitFor": 123
+  }
+}
+​
+Details on the new request body
+The table below outlines the changes to the request body parameters for the /crawl endpoint in V1.
+
+Parameter	Change	Description
+pageOptions	Renamed	Renamed to scrapeOptions.
+includes	Moved and Renamed	Moved to root level. Renamed to includePaths.
+excludes	Moved and Renamed	Moved to root level. Renamed to excludePaths.
+allowBackwardCrawling	Moved and Renamed	Moved to root level. Renamed to allowBackwardLinks.
+allowExternalLinks	Moved	Moved to root level.
+maxDepth	Moved	Moved to root level.
+ignoreSitemap	Moved	Moved to root level.
+limit	Moved	Moved to root level.
+crawlerOptions	Removed	No need for crawlerOptions parameter. The crawl options were moved to root level.
+timeout	Removed	Use timeout in scrapeOptions instead.
+
+
+Get Started
+Advanced Scraping Guide
+Learn how to improve your Firecrawl scraping with advanced options.
+
+This guide will walk you through the different endpoints of Firecrawl and how to use them fully with all its parameters.
+
+​
+Basic scraping with Firecrawl (/scrape)
+To scrape a single page and get clean markdown content, you can use the /scrape endpoint.
+
+
+Python
+
+JavaScript
+
+Go
+
+Rust
+
+cURL
+
+// npm install @mendable/firecrawl-js
+
+import { FirecrawlApp } from 'firecrawl-js';
+
+const app = new FirecrawlApp({ apiKey: 'YOUR_API_KEY' });
+
+const content = await app.scrapeUrl('https://docs.firecrawl.dev');
+​
+Scraping PDFs
+Firecrawl supports scraping PDFs by default. You can use the /scrape endpoint to scrape a PDF link and get the text content of the PDF. You can disable this by setting parsePDF to false.
+
+​
+Scrape Options
+When using the /scrape endpoint, you can customize the scraping behavior with many parameters. Here are the available options:
+
+​
+Setting the content formats on response with formats
+Type: array
+Enum: ["markdown", "links", "html", "rawHtml", "screenshot", "json"]
+Description: Specify the formats to include in the response. Options include:
+markdown: Returns the scraped content in Markdown format.
+links: Includes all hyperlinks found on the page.
+html: Provides the content in HTML format.
+rawHtml: Delivers the raw HTML content, without any processing.
+screenshot: Includes a screenshot of the page as it appears in the browser.
+json: Extracts structured information from the page using the LLM.
+Default: ["markdown"]
+​
+Getting the full page content as markdown with onlyMainContent
+Type: boolean
+Description: By default, the scraper will only return the main content of the page, excluding headers, navigation bars, footers, etc. Set this to false to return the full page content.
+Default: true
+​
+Setting the tags to include with includeTags
+Type: array
+Description: Specify the HTML tags, classes and ids to include in the response.
+Default: undefined
+​
+Setting the tags to exclude with excludeTags
+Type: array
+Description: Specify the HTML tags, classes and ids to exclude from the response.
+Default: undefined
+​
+Waiting for the page to load with waitFor
+Type: integer
+Description: To be used only as a last resort. Wait for a specified amount of milliseconds for the page to load before fetching content.
+Default: 0
+​
+Setting the maximum timeout
+Type: integer
+Description: Set the maximum duration in milliseconds that the scraper will wait for the page to respond before aborting the operation.
+Default: 30000 (30 seconds)
+​
+Example Usage
+
+curl -X POST https://api.firecrawl.dev/v1/scrape \
+    -H '
+    Content-Type: application/json' \
+    -H 'Authorization : Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev",
+      "formats": ["markdown", "links", "html", "rawHtml", "screenshot"],
+      "includeTags": ["h1", "p", "a", ".main-content"],
+      "excludeTags": ["#ad", "#footer"],
+      "onlyMainContent": false,
+      "waitFor": 1000,
+      "timeout": 15000
+    }'
+In this example, the scraper will:
+
+Return the full page content as markdown.
+Include the markdown, raw HTML, HTML, links and screenshot in the response.
+The response will include only the HTML tags <h1>, <p>, <a>, and elements with the class .main-content, while excluding any elements with the IDs #ad and #footer.
+Wait for 1000 milliseconds (1 second) for the page to load before fetching the content.
+Set the maximum duration of the scrape request to 15000 milliseconds (15 seconds).
+Here is the API Reference for it: Scrape Endpoint Documentation
+
+​
+Extractor Options
+When using the /scrape endpoint, you can specify options for extracting structured information from the page content using the extract parameter. Here are the available options:
+
+​
+Using the LLM Extraction
+​
+schema
+Type: object
+Required: False if prompt is provided
+Description: The schema for the data to be extracted. This defines the structure of the extracted data.
+​
+system prompt
+Type: string
+Required: False
+Description: System prompt for the LLM.
+​
+prompt
+Type: string
+Required: False if schema is provided
+Description: A prompt for the LLM to extract the data in the correct structure.
+Example: "Extract the features of the product"
+​
+Example Usage
+
+curl -X POST https://api.firecrawl.dev/v0/scrape \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://firecrawl.dev",
+      "formats": ["markdown", "json"],
+      "json": {
+        "prompt": "Extract the features of the product"
+      }
+    }'
+
+{
+  "success": true,
+  "data": {
+    "content": "Raw Content",
+    "metadata": {
+      "title": "Mendable",
+      "description": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+      "robots": "follow, index",
+      "ogTitle": "Mendable",
+      "ogDescription": "Mendable allows you to easily build AI chat applications. Ingest, customize, then deploy with one line of code anywhere you want. Brought to you by SideGuide",
+      "ogUrl": "https://docs.firecrawl.dev/",
+      "ogImage": "https://docs.firecrawl.dev/mendable_new_og1.png",
+      "ogLocaleAlternate": [],
+      "ogSiteName": "Mendable",
+      "sourceURL": "https://docs.firecrawl.dev/",
+      "statusCode": 200
+    },
+    "extract": {
+      "product": "Firecrawl",
+      "features": {
+        "general": {
+          "description": "Turn websites into LLM-ready data.",
+          "openSource": true,
+          "freeCredits": 500,
+          "useCases": [
+            "AI applications",
+            "Data science",
+            "Market research",
+            "Content aggregation"
+          ]
+        },
+        "crawlingAndScraping": {
+          "crawlAllAccessiblePages": true,
+          "noSitemapRequired": true,
+          "dynamicContentHandling": true,
+          "dataCleanliness": {
+            "process": "Advanced algorithms",
+            "outputFormat": "Markdown"
+          }
+        },
+        ...
+      }
+    }
+  }
+}
+​
+Actions
+When using the /scrape endpoint, Firecrawl allows you to perform various actions on a web page before scraping its content. This is particularly useful for interacting with dynamic content, navigating through pages, or accessing content that requires user interaction.
+
+​
+Available Actions
+​
+wait
+Type: object
+Description: Wait for a specified amount of milliseconds.
+Properties:
+type: "wait"
+milliseconds: Number of milliseconds to wait.
+Example:
+
+{
+  "type": "wait",
+  "milliseconds": 2000
+}
+​
+screenshot
+Type: object
+Description: Take a screenshot.
+Properties:
+type: "screenshot"
+fullPage: Should the screenshot be full-page or viewport sized? (default: false)
+Example:
+
+{
+  "type": "screenshot",
+  "fullPage": true
+}
+​
+click
+Type: object
+Description: Click on an element.
+Properties:
+type: "click"
+selector: Query selector to find the element by.
+Example:
+
+{
+  "type": "click",
+  "selector": "#load-more-button"
+}
+​
+write
+Type: object
+Description: Write text into an input field.
+Properties:
+type: "write"
+text: Text to type.
+selector: Query selector for the input field.
+Example:
+
+{
+  "type": "write",
+  "text": "Hello, world!",
+  "selector": "#search-input"
+}
+​
+press
+Type: object
+Description: Press a key on the page.
+Properties:
+type: "press"
+key: Key to press.
+Example:
+
+{
+  "type": "press",
+  "key": "Enter"
+}
+​
+scroll
+Type: object
+Description: Scroll the page.
+Properties:
+type: "scroll"
+direction: Direction to scroll ("up" or "down").
+amount: Amount to scroll in pixels.
+Example:
+
+{
+  "type": "scroll",
+  "direction": "down",
+  "amount": 500
+}
+For more details about the actions parameters, refer to the API Reference.
+
+​
+Crawling Multiple Pages
+To crawl multiple pages, you can use the /crawl endpoint. This endpoint allows you to specify a base URL you want to crawl and all accessible subpages will be crawled.
+
+
+curl -X POST https://api.firecrawl.dev/v1/crawl \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev"
+    }'
+Returns a id
+
+
+{ "id": "1234-5678-9101" }
+​
+Check Crawl Job
+Used to check the status of a crawl job and get its result.
+
+
+curl -X GET https://api.firecrawl.dev/v1/crawl/1234-5678-9101 \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_API_KEY'
+​
+Pagination/Next URL
+If the content is larger than 10MB or if the crawl job is still running, the response will include a next parameter. This parameter is a URL to the next page of results. You can use this parameter to get the next page of results.
+
+​
+Crawler Options
+When using the /crawl endpoint, you can customize the crawling behavior with request body parameters. Here are the available options:
+
+​
+includePaths
+Type: array
+Description: URL patterns to include in the crawl. Only URLs matching these patterns will be crawled.
+Example: ["/blog/*", "/products/*"]
+​
+excludePaths
+Type: array
+Description: URL patterns to exclude from the crawl. URLs matching these patterns will be skipped.
+Example: ["/admin/*", "/login/*"]
+​
+maxDepth
+Type: integer
+Description: Maximum depth to crawl relative to the entered URL. A maxDepth of 0 scrapes only the entered URL. A maxDepth of 1 scrapes the entered URL and all pages one level deep. A maxDepth of 2 scrapes the entered URL and all pages up to two levels deep. Higher values follow the same pattern.
+Example: 2
+​
+limit
+Type: integer
+Description: Maximum number of pages to crawl.
+Default: 10000
+​
+allowBackwardLinks
+Type: boolean
+Description: This option permits the crawler to navigate to URLs that are higher in the directory structure than the base URL. For instance, if the base URL is example.com/blog/topic, enabling this option allows crawling to pages like example.com/blog or example.com, which are backward in the path hierarchy relative to the base URL.
+Default: false
+​
+allowExternalLinks
+Type: boolean
+Description: This option allows the crawler to follow links that point to external domains. Be careful with this option, as it can cause the crawl to stop only based only on thelimit and maxDepth values.
+Default: false
+​
+scrapeOptions
+As part of the crawler options, you can also specify the scrapeOptions parameter. This parameter allows you to customize the scraping behavior for each page.
+
+Type: object
+Description: Options for the scraper.
+Example: {"formats": ["markdown", "links", "html", "rawHtml", "screenshot"], "includeTags": ["h1", "p", "a", ".main-content"], "excludeTags": ["#ad", "#footer"], "onlyMainContent": false, "waitFor": 1000, "timeout": 15000}
+Default: { "formats": ["markdown"] }
+See: Scrape Options
+​
+Example Usage
+
+curl -X POST https://api.firecrawl.dev/v1/crawl \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization : Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev",
+      "includePaths": ["/blog/*", "/products/*"],
+      "excludePaths": ["/admin/*", "/login/*"],
+      "maxDepth": 2,
+      "limit": 1000
+    }'
+In this example, the crawler will:
+
+Only crawl URLs that match the patterns /blog/* and /products/*.
+Skip URLs that match the patterns /admin/* and /login/*.
+Return the full document data for each page.
+Crawl up to a maximum depth of 2.
+Crawl a maximum of 1000 pages.
+​
+Mapping Website Links with /map
+The /map endpoint is adept at identifying URLs that are contextually related to a given website. This feature is crucial for understanding a site’s contextual link environment, which can greatly aid in strategic site analysis and navigation planning.
+
+​
+Usage
+To use the /map endpoint, you need to send a GET request with the URL of the page you want to map. Here is an example using curl:
+
+
+curl -X POST https://api.firecrawl.dev/v1/map \
+    -H 'Content-Type: application/json' \
+    -H 'Authorization: Bearer YOUR_API_KEY' \
+    -d '{
+      "url": "https://docs.firecrawl.dev"
+    }'
+This will return a JSON object containing links contextually related to the url.
+
+​
+Example Response
+
+  {
+    "success":true,
+    "links":[
+      "https://docs.firecrawl.dev",
+      "https://docs.firecrawl.dev/api-reference/endpoint/crawl-delete",
+      "https://docs.firecrawl.dev/api-reference/endpoint/crawl-get",
+      "https://docs.firecrawl.dev/api-reference/endpoint/crawl-post",
+      "https://docs.firecrawl.dev/api-reference/endpoint/map",
+      "https://docs.firecrawl.dev/api-reference/endpoint/scrape",
+      "https://docs.firecrawl.dev/api-reference/introduction",
+      "https://docs.firecrawl.dev/articles/search-announcement",
+      ...
+    ]
+  }
+​
+Map Options
+​
+search
+Type: string
+Description: Search for links containing specific text.
+Example: "blog"
+​
+limit
+Type: integer
+Description: Maximum number of links to return.
+Default: 100
+​
+ignoreSitemap
+Type: boolean
+Description: Ignore the website sitemap when crawling
+Default: true
+​
+includeSubdomains
+Type: boolean
+Description: Include subdomains of the website
+Default: false
+Here is the API Reference for it: Map Endpoint Documentation
+
+
+Features
+Extract
+Extract structured data from pages using LLMs
+
+​
+Introducing /extract (Open Beta)
+The /extract endpoint simplifies collecting structured data from any number of URLs or entire domains. Provide a list of URLs, optionally with wildcards (e.g., example.com/*), and a prompt or schema describing the information you want. Firecrawl handles the details of crawling, parsing, and collating large or small datasets.
+
+​
+Using /extract
+You can extract structured data from one or multiple URLs, including wildcards:
+
+Single Page
+Example: https://firecrawl.dev/some-page
+Multiple Pages / Full Domain
+Example: https://firecrawl.dev/*
+When you use /*, Firecrawl will automatically crawl and parse all URLs it can discover in that domain, then extract the requested data. This feature is experimental; email help@firecrawl.dev if you have issues.
+
+​
+Example Usage
+
+Python
+
+Node
+
+cURL
+
+import FirecrawlApp from "@mendable/firecrawl-js";
+import { z } from "zod";
+
+const app = new FirecrawlApp({
+  apiKey: "fc-YOUR_API_KEY"
+});
+
+// Define schema to extract contents into
+const schema = z.object({
+  company_mission: z.string(),
+  supports_sso: z.boolean(),
+  is_open_source: z.boolean(),
+  is_in_yc: z.boolean()
+});
+
+const scrapeResult = await app.extract([
+  'https://docs.firecrawl.dev/*', 
+  'https://firecrawl.dev/', 
+  'https://www.ycombinator.com/companies/'
+], {
+  prompt: "Extract the company mission, whether it supports SSO, whether it is open source, and whether it is in Y Combinator from the page.",
+  schema: schema
+});
+
+if (!scrapeResult.success) {
+  throw new Error(`Failed to scrape: ${scrapeResult.error}`)
+}
+
+console.log(scrapeResult.data);
+Key Parameters:
+
+urls: An array of one or more URLs. Supports wildcards (/*) for broader crawling.
+prompt (Optional unless no schema): A natural language prompt describing the data you want or specifying how you want that data structured.
+schema (Optional unless no prompt): A more rigid structure if you already know the JSON layout.
+enableWebSearch (Optional): When true, extraction can follow links outside the specified domain.
+See API Reference for more details.
+
+​
+Response (sdks)
+JSON
+
+{
+  "success": true,
+  "data": {
+    "company_mission": "Firecrawl is the easiest way to extract data from the web. Developers use us to reliably convert URLs into LLM-ready markdown or structured data with a single API call.",
+    "supports_sso": false,
+    "is_open_source": true,
+    "is_in_yc": true
+  }
+}
+​
+Asynchronous Extraction & Status Checking
+When you submit an extraction job—either directly via the API or through the SDK’s asynchronous methods—you’ll receive a Job ID. You can use this ID to:
+
+Check Job Status: Send a request to the /extract/ endpoint to see if the job is still running or has finished.
+Automatically Poll (Default SDK Behavior): If you use the default extract method (Python/Node), the SDK automatically polls this endpoint for you and returns the final results once the job completes.
+Manually Poll (Async SDK Methods): If you use the asynchronous methods—async_extract (Python) or asyncExtract (Node)—the SDK immediately returns a Job ID that you can track. Use get_extract_status (Python) or getExtractStatus (Node) to check the job’s progress on your own schedule.
+This endpoint only works for jobs in progress or recently completed (within 24 hours).
+
+Below are code examples for checking an extraction job’s status using Python, Node.js, and cURL:
+
+
+Python
+
+Node
+
+cURL
+
+import FirecrawlApp from "@mendable/firecrawl-js";
+
+const app = new FirecrawlApp({
+  apiKey: "fc-YOUR_API_KEY"
+});
+
+// Start an extraction job first
+const extractJob = await app.asyncExtract([
+  'https://docs.firecrawl.dev/*', 
+  'https://firecrawl.dev/'
+], {
+  prompt: "Extract the company mission and features from these pages."
+});
+
+// Get the status of the extraction job
+const jobStatus = await app.getExtractStatus(extractJob.jobId);
+
+console.log(jobStatus);
+// Example output:
+// {
+//   status: "completed",
+//   progress: 100,
+//   results: [{
+//     url: "https://docs.firecrawl.dev",
+//     data: { ... }
+//   }]
+// }
+​
+Possible States
+completed: The extraction finished successfully.
+pending: Firecrawl is still processing your request.
+failed: An error occurred; data was not fully extracted.
+cancelled: The job was cancelled by the user.
+​
+Pending Example
+JSON
+
+{
+  "success": true,
+  "data": [],
+  "status": "processing",
+  "expiresAt": "2025-01-08T20:58:12.000Z"
+}
+​
+Completed Example
+JSON
+
+{
+  "success": true,
+  "data": {
+      "company_mission": "Firecrawl is the easiest way to extract data from the web. Developers use us to reliably convert URLs into LLM-ready markdown or structured data with a single API call.",
+      "supports_sso": false,
+      "is_open_source": true,
+      "is_in_yc": true
+    },
+  "status": "completed",
+  "expiresAt": "2025-01-08T20:58:12.000Z"
+}
+​
+Extracting without a Schema
+If you prefer not to define a strict structure, you can simply provide a prompt. The underlying model will choose a structure for you, which can be useful for more exploratory or flexible requests.
+
+
+Python
+
+Node
+
+cURL
+
+import FirecrawlApp from "@mendable/firecrawl-js";
+
+const app = new FirecrawlApp({
+apiKey: "fc-YOUR_API_KEY"
+});
+
+const scrapeResult = await app.extract([
+'https://docs.firecrawl.dev/',
+'https://firecrawl.dev/'
+], {
+prompt: "Extract Firecrawl's mission from the page."
+});
+
+if (!scrapeResult.success) {
+throw new Error(`Failed to scrape: ${scrapeResult.error}`)
+}
+
+console.log(scrapeResult.data);
+JSON
+
+{
+  "success": true,
+  "data": {
+    "company_mission": "Turn websites into LLM-ready data. Power your AI apps with clean data crawled from any website."
+  }
+}
+​
+Improving Results with Web Search
+Setting enableWebSearch = true in your request will expand the crawl beyond the provided URL set. This can capture supporting or related information from linked pages.
+
+Here’s an example that extracts information about dash cams, enriching the results with data from related pages:
+
+
+Python
+
+Node
+
+cURL
+
+import FirecrawlApp from "@mendable/firecrawl-js";
+
+const app = new FirecrawlApp({
+apiKey: "fc-YOUR_API_KEY"
+});
+
+const scrapeResult = await app.extract([
+'https://nextbase.com/dash-cams/622gw-dash-cam'
+], {
+prompt: "Extract details about the best dash cams including prices, features, pros/cons and reviews.",
+enableWebSearch: true // Enable web search for better context
+});
+
+if (!scrapeResult.success) {
+throw new Error(`Failed to scrape: ${scrapeResult.error}`)
+}
+
+console.log(scrapeResult.data);
+​
+Example Response with Web Search
+JSON
+
+{
+  "success": true,
+  "data": {
+    "dash_cams": [
+      {
+        "name": "Nextbase 622GW",
+        "price": "$399.99",
+        "features": [
+          "4K video recording",
+          "Image stabilization",
+          "Alexa built-in",
+          "What3Words integration"
+        ],
+        /* Information below enriched with other websites like 
+        https://www.techradar.com/best/best-dash-cam found 
+        via enableWebSearch parameter */
+        "pros": [
+          "Excellent video quality",
+          "Great night vision",
+          "Built-in GPS"
+        ],
+        "cons": ["Premium price point", "App can be finicky"]
+      }
+    ],
+  }
+
+The response includes additional context gathered from related pages, providing more comprehensive and accurate information.
+
+​
+Known Limitations (Beta)
+Large-Scale Site Coverage
+Full coverage of massive sites (e.g., “all products on Amazon”) in a single request is not yet supported.
+
+Complex Logical Queries
+Requests like “find every post from 2025” may not reliably return all expected data. More advanced query capabilities are in progress.
+
+Occasional Inconsistencies
+Results might differ across runs, particularly for very large or dynamic sites. Usually it captures core details, but some variation is possible.
+
+Beta State
+Since /extract is still in Beta, features and performance will continue to evolve. We welcome bug reports and feedback to help us improve.

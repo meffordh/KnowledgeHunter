@@ -861,14 +861,9 @@ async function researchQuery(
       scrape: true,
       extractContent: true,
       extractMetadata: true,
-      scrapeOptions: {
-        waitUntil: 'networkidle0',
-        timeout: 10000
-      },
       extractorOptions: {
         prompt: `Extract detailed information relevant to: ${query}. Include specific facts, numbers, and key details.`,
-        selector: 'body',
-        includeMetadata: true
+        selector: 'body'
       }
     });
 
