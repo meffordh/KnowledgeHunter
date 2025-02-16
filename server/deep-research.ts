@@ -859,15 +859,32 @@ async function researchQuery(
 
     const fcResult = await firecrawl.search(query, {
       scrape: true,
+      extractContent: true,
+      extractMetadata: true,
       extractorOptions: {
         extractionSchema: {
           type: "object",
           properties: {
-            relevant_content: { type: "string" },
-            relevant_images: { type: "array", items: { type: "string" } },
+            relevant_content: { 
+              type: "string",
+              description: "The main content relevant to the query"
+            },
+            summary: {
+              type: "string",
+              description: "A brief summary of the content"
+            },
+            relevant_images: { 
+              type: "array", 
+              items: { type: "string" },
+              description: "URLs of images that are relevant to the content"
+            },
           },
+          required: ["relevant_content"]
         },
-        prompt: "Extract all information relevant to: " + query,
+        prompt: `Extract detailed information relevant to: ${query}
+                Focus on factual content, numbers, statistics, and specific details.
+                Include any relevant quotes or citations.
+                Ensure the extracted content directly addresses the query.`,
       },
     });
 
@@ -944,9 +961,7 @@ async function researchQuery(
                 type: "image",
                 url: imageUrl,
                 title: item.metadata?.title as string | undefined,
-                description: item.metadata?.description as string | undefined,
-              });
-              console.log(`Added image from ${item.url}: ${imageUrl}`);
+                description: item.metadata?.description as string | undefined,              });
             }
           } catch (error) {
             console.error("Error processing image dimensions:", imageUrl, error);
