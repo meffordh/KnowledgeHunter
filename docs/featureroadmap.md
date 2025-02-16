@@ -4,7 +4,7 @@
 |----|--------------|--------------------|--------|------------|------|-----|--------------|------------|-----------------------|
 | 1 | Dynamic Response Streaming | Real-time UI updates during research | 5 | 5 | 2 | 5.0 | - | As a researcher, I want to see findings as they're discovered | Enhance WebSocket handlers in deep-research.ts |
 | 2 | Instant Sharing | One-click publishable links | 5 | 5 | 2 | 5.0 | 1 | As a collaborator, I need to share reports securely | JWT-protected URLs with Redis access control |
-| 17 | Adaptive Research Routing | AI determines optimal search strategy | 5 | 4 | 3 | 3.0 | 1 | As a user, I want the system to choose the best research method automatically | Implement ML model to analyze query intent |
+| 17 | Adaptive Research Routing | AI determines optimal search strategy | 5 | 4 | 3 | 3.0 | 1 | As a user, I want the system to choose the best research method automatically | Implement MCP model to analyze query intent |
 | 3 | Automated Workflows | Pre-built research pipelines | 4 | 5 | 2 | 4.5 | 1,7 | Business user needs templated analysis | YAML-based workflow DSL |
 | 4 | Research Chaining | Use previous outputs as context | 4 | 5 | 2 | 4.5 | 1 | Analyst wants iterative research | Context chaining with LRU cache |
 | 18 | Knowledgebase Search | Search internal database instead of web | 5 | 4 | 3 | 3.0 | 11 | Enterprise user needs private knowledge access | Implement Elasticsearch integration |
