@@ -871,6 +871,11 @@ async function researchQuery(
       },
     });
 
+    console.log("Raw Firecrawl response:", {
+      success: fcResult.success,
+      dataCount: fcResult.data?.length,
+    });
+
     const parsedResult = FirecrawlResult.safeParse(fcResult);
 
     if (!parsedResult.success) {
@@ -888,8 +893,25 @@ async function researchQuery(
 
     // Process structured data and metadata from Firecrawl
     for (const item of parsedResult.data.data) {
+      console.log("Processing item:", {
+        url: item.url,
+        hasExtractedData: Boolean(item.extractedData),
+        hasMetadata: Boolean(item.metadata),
+        contentLength: item.content?.length || 0,
+      });
+
+      // First try to use the extracted data
       if (item.extractedData?.relevant_content) {
-        findings.push(`From ${item.url}: ${item.extractedData.relevant_content}`);
+        const content = item.extractedData.relevant_content.trim();
+        if (content) {
+          findings.push(`From ${item.url}: ${content}`);
+        }
+      } else if (item.content) {
+        // Fallback to raw content if available
+        const content = item.content.trim();
+        if (content) {
+          findings.push(`From ${item.url}: ${content}`);
+        }
       }
 
       // Add metadata-based findings
@@ -899,8 +921,12 @@ async function researchQuery(
           item.metadata.description,
         ]
           .filter(Boolean)
-          .join(" - ");
-        findings.push(`Metadata from ${item.url}: ${metadataContent}`);
+          .join(" - ")
+          .trim();
+
+        if (metadataContent) {
+          findings.push(`Metadata from ${item.url}: ${metadataContent}`);
+        }
       }
 
       // Process relevant images from extraction
@@ -927,19 +953,26 @@ async function researchQuery(
       }
     }
 
-    // If no findings were gathered, provide a placeholder
+    // Only add placeholder if we truly have no findings
     if (findings.length === 0) {
       console.warn(`No usable content found for query: ${query}`);
       findings.push("No relevant findings available for this query.");
     }
 
     console.log(
-      `Found ${findings.length} findings and ${media.length} media items for query: ${query}`,
+      `Research results for "${query}":`,
+      {
+        findingsCount: findings.length,
+        mediaCount: media.length,
+        urlsCount: urls.length,
+        sampleFindings: findings.slice(0, 2).map(f => f.substring(0, 100) + "..."),
+      },
     );
+
     return { findings, urls, media };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
-    return { findings: ["Error retrieving results."], urls: [], media: [] };
+        return { findings: ["Error retrieving results."], urls: [], media: [] };
   }
 }
 
@@ -994,11 +1027,19 @@ async function handleResearch(
       // Process all queries concurrently
       const results = await Promise.all(
         queriesToProcess.map(async (query) => {
+          console.log(`Starting concurrent processing for query: ${query}`);
           const result = await researchQuery(query);
+          console.log(`Finished query "${query}":`, {
+            findingsCount: result.findings.length,
+            urlsCount: result.urls.length,
+            mediaCount: result.media.length,
+          });
+
           // Optionally generate follow-up queries concurrently if not in fastMode
           let followUpQueries: string[] = [];
           if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
             followUpQueries = await expandQuery(context);
+            console.log(`Generated ${followUpQueries.length} follow-up queries for "${query}"`);
           }
           return { result, followUpQueries };
         })
@@ -1006,21 +1047,51 @@ async function handleResearch(
 
       // Aggregate results from each query
       const newQueries: string[] = [];
+      let newFindingsCount = 0;
+
       results.forEach(({ result, followUpQueries }) => {
-        context.learnings.push(...result.findings);
+        // Process findings
+        if (result.findings.length > 0) {
+          context.learnings.push(...result.findings);
+          newFindingsCount += result.findings.length;
+        }
+
+        // Update other context data
         context.visitedUrls.push(...result.urls);
         context.media.push(...result.media);
         newQueries.push(...followUpQueries);
       });
 
-      // Update context for next iteration
+      console.log(`Depth ${context.currentDepth + 1}/${context.totalDepth} completed:`, {
+        newFindings: newFindingsCount,
+        totalFindings: context.learnings.length,
+        newQueries: newQueries.length,
+      });
+
+      // Update context and send progress
       context = updateResearchContext(context, {
         processedQueries: context.processedQueries + queriesToProcess.length,
+        currentBreadth: queriesToProcess.length,
       });
+
+      // Send progress update with current findings
+      const currentMetrics = calculateProgressMetrics(context);
+      sendProgress(
+        constructProgressUpdate(
+          context,
+          "IN_PROGRESS",
+          currentMetrics
+        )
+      );
 
       // Check if research is sufficient
       const sufficientResponse = await isResearchSufficient(context);
       if (sufficientResponse.isComplete && sufficientResponse.confidence >= 0.8) {
+        console.log("Research deemed sufficient:", {
+          confidence: sufficientResponse.confidence,
+          reasoning: sufficientResponse.reasoning,
+          totalFindings: context.learnings.length
+        });
         break;
       }
 
