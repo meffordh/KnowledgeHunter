@@ -114,6 +114,16 @@ const SufficiencyResponse = z.object({
     .optional(),
 });
 
+// Add schema definition at the top with other schemas
+const ExtractedContent = z.object({
+  findings: z.array(z.string()),
+  media: z.array(z.object({
+    url: z.string(),
+    description: z.string(),
+    type: z.string()
+  }))
+});
+
 // -----------------------------
 // Types & Interfaces
 // -----------------------------
@@ -851,20 +861,17 @@ function updateResearchContext(
 // -----------------------------
 // New Implementation: researchQuery
 // -----------------------------
+// Update researchQuery function
 async function researchQuery(
   query: string,
 ): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
     console.log("Performing research query:", query);
 
+    // First get URLs from search
     const fcResult = await firecrawl.search(query, {
-      scrape: true,
-      extractContent: true,
-      extractMetadata: true,
-      extractorOptions: {
-        prompt: `Extract detailed information relevant to: ${query}. Include specific facts, numbers, and key details.`,
-        selector: 'body'
-      }
+      limit: 5,
+      formats: ["html", "json", "extract"]
     });
 
     console.log("Raw Firecrawl response:", {
@@ -874,75 +881,80 @@ async function researchQuery(
       firstItemMetadata: fcResult.data?.[0]?.metadata
     });
 
-    const parsedResult = FirecrawlResult.safeParse(fcResult);
-
-    if (!parsedResult.success) {
-      console.warn(`Failed to parse Firecrawl results for query: ${query}`);
+    if (!fcResult.success || !fcResult.data) {
+      console.warn(`Failed to get search results for query: ${query}`);
       return {
-        findings: ["Error processing search results."],
+        findings: ["Error retrieving search results."],
         urls: [],
         media: [],
       };
     }
 
-    const findings: string[] = [];
-    const urls = parsedResult.data.data.map((item) => item.url);
-    const media: MediaContent[] = [];
+    // Get URLs from search results
+    const urls = fcResult.data.map(item => item.url);
 
-    // Process structured data and metadata from Firecrawl
-    for (const item of parsedResult.data.data) {
-      console.log("Processing item:", {
-        url: item.url,
-        hasContent: Boolean(item.content),
-        contentLength: item.content?.length || 0,
-        hasMetadata: Boolean(item.metadata),
-      });
+    // Use extract with our schema to get structured content
+    const extractResult = await firecrawl.extract(urls, {
+      prompt: `For the following query: ${query}, based on the content your job is to identify all "findings" which are specific facts, details and statistics from the page relevant to the query. Additionally, return any "media" which are relevant to the query as an array of objects including the fully qualified url of the asset or the fully constructed url of the video, as well as a description of the asset based on the information provided, and the type of asset which should always be either "image" or "video"`,
+      schema: ExtractedContent
+    });
 
-      // Process content if available
-      if (item.content) {
-        const content = item.content.trim();
-        if (content.length > 0) {
-          findings.push(`From ${item.url}: ${content}`);
-          console.log(`Added content from ${item.url}, length: ${content.length}`);
-        }
-      }
+    console.log("Extract result:", {
+      success: extractResult.success,
+      dataCount: extractResult.data?.length,
+      sampleFindings: extractResult.data?.[0]?.findings?.slice(0, 2)
+    });
 
-      // Add metadata-based findings
-      if (item.metadata?.title || item.metadata?.description) {
-        const metadataContent = [
-          item.metadata.title,
-          item.metadata.description,
-        ]
-          .filter(Boolean)
-          .join(" - ")
-          .trim();
-
-        if (metadataContent) {
-          findings.push(`Metadata from ${item.url}: ${metadataContent}`);
-          console.log(`Added metadata from ${item.url}: ${metadataContent.substring(0, 100)}...`);
-        }
-      }
+    if (!extractResult.success || !extractResult.data) {
+      console.warn(`Failed to extract content for query: ${query}`);
+      return {
+        findings: ["Error extracting content."],
+        urls,
+        media: [],
+      };
     }
 
-    // Only add placeholder if we truly have no findings
-    if (findings.length === 0) {
+    // Combine findings and media from all extracted results
+    const allFindings: string[] = [];
+    const allMedia: MediaContent[] = [];
+
+    extractResult.data.forEach((result) => {
+      if (result.findings) {
+        allFindings.push(...result.findings);
+      }
+      if (result.media) {
+        allMedia.push(...result.media.map(m => ({
+          type: m.type as "video" | "image",
+          url: m.url,
+          description: m.description
+        })));
+      }
+    });
+
+    // If we still have no findings, add a placeholder
+    if (allFindings.length === 0) {
       console.warn(`No usable content found for query: ${query}`);
-      findings.push("No relevant findings available for this query.");
+      allFindings.push("No relevant findings available for this query.");
     }
 
     console.log(
-      `Research results for "${query}":`,      {
-        findingsCount: findings.length,
-        mediaCount: media.length,
+      `Research results for "${query}":`,
+      {
+        findingsCount: allFindings.length,
+        mediaCount: allMedia.length,
         urlsCount: urls.length,
-        sampleFindings: findings.slice(0, 2).map(f => f.substring(0, 100) + "..."),
-      },
+        sampleFindings: allFindings.slice(0, 2).map(f => f.substring(0, 100) + "...")
+      }
     );
 
-    return { findings, urls, media };
+    return { findings: allFindings, urls, media: allMedia };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
-    return { findings: ["Error retrieving results."], urls: [], media: [] };
+    return {
+      findings: [`Error processing query: ${error instanceof Error ? error.message : String(error)}`],
+      urls: [],
+      media: []
+    };
   }
 }
 
@@ -1000,7 +1012,7 @@ async function handleResearch(
           try {
             const result = await researchQuery(query);
 
-            if (result.findings.length === 0 || 
+            if (result.findings.length === 0 ||
                 (result.findings.length === 1 && result.findings[0].includes("No relevant findings"))) {
               console.warn(`No usable content found for query: ${query}, retrying with different extractor options`);
 
