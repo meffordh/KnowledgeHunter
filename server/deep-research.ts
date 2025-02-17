@@ -1001,8 +1001,6 @@ async function handleResearch(
   };
 
   try {
-    let currentQueries = [context.query];
-
     console.log("Starting research:", {
       query: research.query,
       fastMode: research.fastMode,
@@ -1010,142 +1008,188 @@ async function handleResearch(
       maxBreadth: context.totalBreadth,
     });
 
-    while (context.currentDepth < context.totalDepth) {
-      const queriesToProcess = currentQueries.slice(0, context.totalBreadth);
-      context.currentBreadth = queriesToProcess.length;
+    // Initial progress update
+    sendProgress({
+      status: "IN_PROGRESS",
+      currentQuery: research.query,
+      learnings: [],
+      progress: 0,
+      totalProgress: context.totalDepth,
+      visitedUrls: [],
+      media: [],
+      breadthProgress: { current: 0, total: context.totalBreadth },
+      completionConfidence: 0,
+      batchProgress: { current: 0, total: 0 },
+    });
 
-      // Update progress before starting this batch
-      const startMetrics = calculateProgressMetrics(context);
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", startMetrics));
+    let queries = [research.query];
+    let currentDepth = 0;
+    let lastConfidence = 0;
 
-      // Process all queries concurrently
-      const results = await Promise.all(
-        queriesToProcess.map(async (query) => {
-          console.log(`Starting concurrent processing for query: ${query}`);
-          try {
-            const result = await researchQuery(query);
+    while (currentDepth < context.totalDepth && queries.length > 0) {
+      context.currentDepth = currentDepth;
+      console.log(`Starting concurrent processing for query: ${queries[0]}`);
 
-            if (result.findings.length === 0 ||
-                (result.findings.length === 1 && result.findings[0].includes("No relevant findings"))) {
-              console.warn(`No usable content found for query: ${query}, retrying with different extractor options`);
+      for (const query of queries.slice(0, context.totalBreadth)) {
+        try {
+          const result = await researchQuery(query);
 
-              // Retry with modified extraction options
-              const retryResult = await firecrawl.search(query, {
-                scrape: true,
-                extractContent: true,
-                extractMetadata: true,
-                extractorOptions: {
-                  prompt: `Find specific information about: ${query}. Focus on exact numbers, dates, and facts.`,
-                  selector: 'main, article, .content'
-                }
-              });
+          // Update progress after search results
+          sendProgress({
+            status: "IN_PROGRESS",
+            currentQuery: query,
+            learnings: context.learnings,
+            progress: context.currentDepth,
+            totalProgress: context.totalDepth,
+            visitedUrls: [...new Set([...context.visitedUrls, ...result.urls])],
+            media: [...context.media, ...result.media],
+            breadthProgress: {
+              current: context.currentBreadth + 1,
+              total: context.totalBreadth,
+            },
+            completionConfidence: lastConfidence,
+            batchProgress: { current: 0, total: 0 },
+          });
 
-              // Process retry results
-              if (retryResult.success && retryResult.data?.length > 0) {
-                const findings: string[] = [];
-                const urls = retryResult.data.map(item => item.url);
+          // Process findings in batches
+          if (result.findings.length > 0) {
+            const batchedFindings = await processBatchFindings(
+              result.findings,
+              MODEL_CONFIG.BALANCED,
+              context,
+            );
 
-                for (const item of retryResult.data) {
-                  if (item.content?.trim()) {
-                    findings.push(`From ${item.url}: ${item.content.trim()}`);
-                  }
-                }
+            context.learnings.push(...batchedFindings);
+            context.visitedUrls.push(...result.urls);
+            context.media.push(...result.media);
+            context.currentBreadth++;
+            context.processedQueries++;
 
-                if (findings.length > 0) {
-                  return { findings, urls, media: [] };
-                }
-              }
-            }
-
-            return result;
-          } catch (error) {
-            console.error(`Error processing query: ${query}`, error);
-            return {
-              findings: [`Error processing query: ${error instanceof Error ? error.message : String(error)}`],
-              urls: [],
-              media: []
-            };
+            // Update progress after batch processing
+            sendProgress({
+              status: "IN_PROGRESS",
+              currentQuery: query,
+              learnings: context.learnings,
+              progress: context.currentDepth,
+              totalProgress: context.totalDepth,
+              visitedUrls: context.visitedUrls,
+              media: context.media,
+              breadthProgress: {
+                current: context.currentBreadth,
+                total: context.totalBreadth,
+              },
+              batchProgress: {
+                current: context.batchesInCurrentDepth,
+                total: Math.ceil(result.findings.length / 10),
+              },
+              completionConfidence: lastConfidence,
+            });
           }
-        })
-      );
 
-      // Process results and update context
-      let newFindings: string[] = [];
-      let newUrls: string[] = [];
-      let newMedia: MediaContent[] = [];
+          // Check if we have enough information
+          const sufficiencyCheck = await isResearchSufficient(context);
+          lastConfidence = sufficiencyCheck.confidence;
 
-      results.forEach((result) => {
-        if (result) {
-          newFindings.push(...result.findings);
-          newUrls.push(...result.urls);
-          newMedia.push(...(result.media || []));
+          // Update progress after confidence check
+          sendProgress({
+            status: "IN_PROGRESS",
+            currentQuery: query,
+            learnings: context.learnings,
+            progress: context.currentDepth,
+            totalProgress: context.totalDepth,
+            visitedUrls: context.visitedUrls,
+            media: context.media,
+            breadthProgress: {
+              current: context.currentBreadth,
+              total: context.totalBreadth,
+            },
+            batchProgress: {
+              current: context.batchesInCurrentDepth,
+              total: Math.ceil(result.findings.length / 10),
+            },
+            completionConfidence: lastConfidence,
+          });
+
+          if (sufficiencyCheck.isComplete) {
+            console.log("Research deemed sufficient");
+            queries = []; // Clear queries to end the research
+            break;
+          }
+        } catch (error) {
+          console.error("Error processing query:", error);
+          sendProgress({
+            status: "ERROR",
+            error: error instanceof Error ? error.message : "Unknown error occurred",
+            currentQuery: query,
+            learnings: context.learnings,
+            progress: context.currentDepth,
+            totalProgress: context.totalDepth,
+            visitedUrls: context.visitedUrls,
+            media: context.media,
+            breadthProgress: { current: context.currentBreadth, total: context.totalBreadth },
+            batchProgress: { current: context.batchesInCurrentDepth, total: context.batchesInCurrentDepth },
+            completionConfidence: lastConfidence,
+          });
+          return;
         }
-      });
-
-      // Update context with new findings
-      context.learnings.push(...newFindings);
-      context.visitedUrls.push(...newUrls.filter(url => !context.visitedUrls.includes(url)));
-      context.media.push(...newMedia);
-      context.processedQueries += queriesToProcess.length;
-
-      // Process findings in batches
-      const processedFindings = await processBatchFindings(
-        newFindings,
-        research.fastMode ? MODEL_CONFIG.BALANCED : MODEL_CONFIG.DEEP,
-        context
-      );
-
-      // Generate follow-up queries if not in fast mode and not at max depth
-      if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
-        const followUpQueries = await expandQuery(context);
-        currentQueries = followUpQueries;
       }
 
-      // Check if research is sufficient
-      const sufficiency = await isResearchSufficient(context);
-      if (sufficiency.isComplete) {
-        console.log("Research deemed sufficient:", sufficiency.reasoning);
-        break;
+      if (queries.length > 0) {
+        queries = await expandQuery(context);
       }
-
-      // Move to next depth level
-      context.currentDepth++;
-
-      // Update progress
-      const metrics = calculateProgressMetrics(context);
-      metrics.confidence = sufficiency.confidence;
-      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
+      currentDepth++;
     }
 
     // Generate final report
+    console.log(`Saving research report for user: ${research.userId}`);
     const report = await formatReport(
       research.query,
       context.learnings,
       context.visitedUrls,
-      context.media
-    );
-
-    const finalMetrics = calculateProgressMetrics(context);
-    sendProgress(
-      constructProgressUpdate(context, "COMPLETED", finalMetrics, report)
+      context.media,
     );
 
     if (onComplete) {
       await onComplete(report, context.visitedUrls);
     }
 
+    // Final progress update with completed status
+    sendProgress({
+      status: "COMPLETED",
+      currentQuery: research.query,
+      learnings: context.learnings,
+      progress: context.totalDepth,
+      totalProgress: context.totalDepth,
+      visitedUrls: context.visitedUrls,
+      media: context.media,
+      report,
+      breadthProgress: {
+        current: context.totalBreadth,
+        total: context.totalBreadth,
+      },
+      batchProgress: {
+        current: context.batchesInCurrentDepth,
+        total: context.batchesInCurrentDepth,
+      },
+      completionConfidence: 1, // Set to 100% when complete
+    });
+
+    console.log("Research completed successfully");
   } catch (error) {
-    console.error("Research error:", error);
-    const errorMetrics = calculateProgressMetrics(context);
-    sendProgress(
-      constructProgressUpdate(
-        context,
-        "ERROR",
-        errorMetrics,
-        undefined,
-        error instanceof Error ? error.message : String(error)
-      )
-    );
+    console.error("Error in handleResearch:", error);
+    sendProgress({
+      status: "ERROR",
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+      currentQuery: research.query,
+      learnings: context.learnings,
+      progress: context.currentDepth,
+      totalProgress: context.totalDepth,
+      visitedUrls: context.visitedUrls,
+      media: context.media,
+      breadthProgress: { current: context.currentBreadth, total: context.totalBreadth },
+      batchProgress: { current: context.batchesInCurrentDepth, total: context.batchesInCurrentDepth },
+      completionConfidence: lastConfidence,
+    });
   }
 }
 
