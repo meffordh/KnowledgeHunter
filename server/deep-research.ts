@@ -955,25 +955,27 @@ async function handleResearch(
   onComplete?: (report: string, visitedUrls: string[]) => Promise<void>,
 ) {
   const sendProgress = (progress: EnhancedProgress) => {
-    if (ws.readyState === WebSocket.OPEN) {      ws.send(JSON.stringify(progress));
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(progress));
     }
   };
 
-  try{
-    let context: ResearchContext = {
-      query: research.query,
-      learnings: [],
-      visitedUrls: [],
-      clarifications: research.clarifications || {},
-      media: [],
-      currentDepth: 0,
-      totalDepth: research.fastMode ? 2 : 4,
-      currentBreadth: 0,
-      totalBreadth: research.fastMode ? 2 : 5,
-      processedQueries: 0,
-      batchesInCurrentDepth: 0,
-    };
+  // Initialize context at the top level to ensure it's always in scope
+  const context: ResearchContext = {
+    query: research.query,
+    learnings: [],
+    visitedUrls: [],
+    clarifications: research.clarifications || {},
+    media: [],
+    currentDepth: 0,
+    totalDepth: research.fastMode ? 2 : 4,
+    currentBreadth: 0,
+    totalBreadth: research.fastMode ? 2 : 5,
+    processedQueries: 0,
+    batchesInCurrentDepth: 0,
+  };
 
+  try {
     let currentQueries = [context.query];
 
     console.log("Starting research:", {
@@ -985,9 +987,7 @@ async function handleResearch(
 
     while (context.currentDepth < context.totalDepth) {
       const queriesToProcess = currentQueries.slice(0, context.totalBreadth);
-      context = updateResearchContext(context, {
-        currentBreadth: queriesToProcess.length,
-      });
+      context.currentBreadth = queriesToProcess.length;
 
       // Update progress before starting this batch
       const startMetrics = calculateProgressMetrics(context);
@@ -998,12 +998,10 @@ async function handleResearch(
         queriesToProcess.map(async (query) => {
           console.log(`Starting concurrent processing for query: ${query}`);
           try {
-            // Add a delay between queries to avoid rate limiting
             const result = await researchQuery(query);
 
-            // Verify we have actual content before proceeding
-            if (result.findings.length === 0 ||
-              (result.findings.length === 1 && result.findings[0].includes("No relevant findings"))) {
+            if (result.findings.length === 0 || 
+                (result.findings.length === 1 && result.findings[0].includes("No relevant findings"))) {
               console.warn(`No usable content found for query: ${query}, retrying with different extractor options`);
 
               // Retry with modified extraction options
@@ -1038,7 +1036,7 @@ async function handleResearch(
           } catch (error) {
             console.error(`Error processing query: ${query}`, error);
             return {
-              findings: [`Error processing query: ${error.message}`],
+              findings: [`Error processing query: ${error instanceof Error ? error.message : String(error)}`],
               urls: [],
               media: []
             };
@@ -1046,74 +1044,62 @@ async function handleResearch(
         })
       );
 
-      // Aggregate results from each query
-      const newQueries: string[] = [];
-      let newFindingsCount = 0;
+      // Process results and update context
+      let newFindings: string[] = [];
+      let newUrls: string[] = [];
+      let newMedia: MediaContent[] = [];
 
-      results.forEach(({ result, followUpQueries }) => {
-        // Process findings
-        if (result.findings.length > 0) {
-          context.learnings.push(...result.findings);
-          newFindingsCount += result.findings.length;
+      results.forEach((result) => {
+        if (result) {
+          newFindings.push(...result.findings);
+          newUrls.push(...result.urls);
+          newMedia.push(...(result.media || []));
         }
-
-        // Update other context data
-        context.visitedUrls.push(...result.urls);
-        context.media.push(...result.media);
-        newQueries.push(...followUpQueries);
       });
 
-      console.log(`Depth ${context.currentDepth + 1}/${context.totalDepth} completed:`, {
-        newFindings: newFindingsCount,
-        totalFindings: context.learnings.length,
-        newQueries: newQueries.length,
-      });
+      // Update context with new findings
+      context.learnings.push(...newFindings);
+      context.visitedUrls.push(...newUrls.filter(url => !context.visitedUrls.includes(url)));
+      context.media.push(...newMedia);
+      context.processedQueries += queriesToProcess.length;
 
-      // Update context and send progress
-      context = updateResearchContext(context, {
-        processedQueries: context.processedQueries + queriesToProcess.length,
-        currentBreadth: queriesToProcess.length,
-      });
-
-      // Send progress update with current findings
-      const currentMetrics = calculateProgressMetrics(context);
-      sendProgress(
-        constructProgressUpdate(
-          context,
-          "IN_PROGRESS",
-          currentMetrics
-        )
+      // Process findings in batches
+      const processedFindings = await processBatchFindings(
+        newFindings,
+        research.fastMode ? MODEL_CONFIG.BALANCED : MODEL_CONFIG.DEEP,
+        context
       );
 
+      // Generate follow-up queries if not in fast mode and not at max depth
+      if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
+        const followUpQueries = await expandQuery(context);
+        currentQueries = followUpQueries;
+      }
+
       // Check if research is sufficient
-      const sufficientResponse = await isResearchSufficient(context);
-      if (sufficientResponse.isComplete && sufficientResponse.confidence >= 0.8) {
-        console.log("Research deemed sufficient:", {
-          confidence: sufficientResponse.confidence,
-          reasoning: sufficientResponse.reasoning,
-          totalFindings: context.learnings.length
-        });
+      const sufficiency = await isResearchSufficient(context);
+      if (sufficiency.isComplete) {
+        console.log("Research deemed sufficient:", sufficiency.reasoning);
         break;
       }
 
-      // Set up new queries for the next depth level
-      currentQueries = newQueries;
-      context = updateResearchContext(context, {
-        currentDepth: context.currentDepth + 1,
-        currentBreadth: 0,
-        batchesInCurrentDepth: 0,
-      });
+      // Move to next depth level
+      context.currentDepth++;
+
+      // Update progress
+      const metrics = calculateProgressMetrics(context);
+      metrics.confidence = sufficiency.confidence;
+      sendProgress(constructProgressUpdate(context, "IN_PROGRESS", metrics));
     }
 
     // Generate final report
     const report = await formatReport(
-      context.query,
+      research.query,
       context.learnings,
       context.visitedUrls,
       context.media
     );
 
-    // Send final progress update
     const finalMetrics = calculateProgressMetrics(context);
     sendProgress(
       constructProgressUpdate(context, "COMPLETED", finalMetrics, report)
@@ -1122,22 +1108,17 @@ async function handleResearch(
     if (onComplete) {
       await onComplete(report, context.visitedUrls);
     }
+
   } catch (error) {
     console.error("Research error:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown research error";
-    const errorMetrics = calculateProgressMetrics({
-      ...context,
-      currentDepth: 0,
-      totalDepth: 1,
-    });
+    const errorMetrics = calculateProgressMetrics(context);
     sendProgress(
       constructProgressUpdate(
         context,
         "ERROR",
         errorMetrics,
         undefined,
-        errorMessage
+        error instanceof Error ? error.message : String(error)
       )
     );
   }
