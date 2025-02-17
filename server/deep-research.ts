@@ -891,7 +891,7 @@ async function researchQuery(
     }
 
     // Get URLs from search results
-    const urls = fcResult.data.map(item => item.url);
+    const urls = fcResult.data.map(item => item.url).filter(Boolean);
 
     // Use extract with our schema to get structured content
     const extractResult = await firecrawl.extract(urls, {
@@ -914,27 +914,40 @@ async function researchQuery(
       };
     }
 
-    // Combine findings and media from all extracted results
+    // Initialize arrays for findings and media
     const allFindings: string[] = [];
     const allMedia: MediaContent[] = [];
 
-    extractResult.data.forEach((result) => {
-      if (result.findings) {
-        allFindings.push(...result.findings);
-      }
-      if (result.media) {
-        allMedia.push(...result.media.map(m => ({
+    // Process each result from the extraction
+    if (Array.isArray(extractResult.data)) {
+      extractResult.data.forEach((result) => {
+        if (result?.findings) {
+          allFindings.push(...result.findings);
+        }
+        if (result?.media) {
+          allMedia.push(...result.media.map(m => ({
+            type: m.type as "video" | "image",
+            url: m.url,
+            description: m.description
+          })));
+        }
+      });
+    } else if (extractResult.data.findings) {
+      // Handle single result case
+      allFindings.push(...extractResult.data.findings);
+      if (extractResult.data.media) {
+        allMedia.push(...extractResult.data.media.map(m => ({
           type: m.type as "video" | "image",
           url: m.url,
           description: m.description
         })));
       }
-    });
+    }
 
     // If we still have no findings, add a placeholder
     if (allFindings.length === 0) {
       console.warn(`No usable content found for query: ${query}`);
-      allFindings.push("No relevant findings available for this query.");
+      allFindings.push("No relevant findings available for this query....");
     }
 
     console.log(
@@ -943,7 +956,7 @@ async function researchQuery(
         findingsCount: allFindings.length,
         mediaCount: allMedia.length,
         urlsCount: urls.length,
-        sampleFindings: allFindings.slice(0, 2).map(f => f.substring(0, 100) + "...")
+        sampleFindings: allFindings.slice(0, 2)
       }
     );
 
