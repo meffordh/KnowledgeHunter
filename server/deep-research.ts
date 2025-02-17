@@ -997,20 +997,52 @@ async function handleResearch(
       const results = await Promise.all(
         queriesToProcess.map(async (query) => {
           console.log(`Starting concurrent processing for query: ${query}`);
-          const result = await researchQuery(query);
-          console.log(`Finished query "${query}":`, {
-            findingsCount: result.findings.length,
-            urlsCount: result.urls.length,
-            mediaCount: result.media.length,
-          });
+          try {
+            // Add a delay between queries to avoid rate limiting
+            const result = await researchQuery(query);
 
-          // Optionally generate follow-up queries concurrently if not in fastMode
-          let followUpQueries: string[] = [];
-          if (!research.fastMode && context.currentDepth < context.totalDepth - 1) {
-            followUpQueries = await expandQuery(context);
-            console.log(`Generated ${followUpQueries.length} follow-up queries for "${query}"`);
+            // Verify we have actual content before proceeding
+            if (result.findings.length === 0 ||
+              (result.findings.length === 1 && result.findings[0].includes("No relevant findings"))) {
+              console.warn(`No usable content found for query: ${query}, retrying with different extractor options`);
+
+              // Retry with modified extraction options
+              const retryResult = await firecrawl.search(query, {
+                scrape: true,
+                extractContent: true,
+                extractMetadata: true,
+                extractorOptions: {
+                  prompt: `Find specific information about: ${query}. Focus on exact numbers, dates, and facts.`,
+                  selector: 'main, article, .content'
+                }
+              });
+
+              // Process retry results
+              if (retryResult.success && retryResult.data?.length > 0) {
+                const findings: string[] = [];
+                const urls = retryResult.data.map(item => item.url);
+
+                for (const item of retryResult.data) {
+                  if (item.content?.trim()) {
+                    findings.push(`From ${item.url}: ${item.content.trim()}`);
+                  }
+                }
+
+                if (findings.length > 0) {
+                  return { findings, urls, media: [] };
+                }
+              }
+            }
+
+            return result;
+          } catch (error) {
+            console.error(`Error processing query: ${query}`, error);
+            return {
+              findings: [`Error processing query: ${error.message}`],
+              urls: [],
+              media: []
+            };
           }
-          return { result, followUpQueries };
         })
       );
 
