@@ -2,11 +2,12 @@ import React from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import { Progress } from "@/components/ui/progress";
-import { ResearchProgress } from "@shared/schema";
+import { ResearchProgress, StreamingResearchUpdateType, ResearchFindingType, ResearchMediaUpdateType, ResearchSourceAnalysisType } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { StreamingResearchProgress } from "@/components/StreamingResearchProgress";
 import { useResearch } from "@/hooks/use-research";
+import {Badge} from "@/components/ui/badge"
 
 interface ResearchProgressDisplayProps {
   className?: string;
@@ -81,6 +82,62 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
     );
   };
 
+  const renderStreamingContent = () => {
+    if (!streamingUpdate) return null;
+
+    switch (streamingUpdate.type) {
+      case 'FINDING':
+        return (
+          <Card className="mb-4">
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <Badge variant="default">{streamingUpdate.data.type}</Badge>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(streamingUpdate.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <p className="text-sm">{streamingUpdate.data.content}</p>
+            </CardContent>
+          </Card>
+        );
+      case 'MEDIA':
+        return (
+          <Card className="mb-4">
+            <CardContent className="pt-4">
+              {streamingUpdate.data.media.type === 'image' && (
+                <img 
+                  src={streamingUpdate.data.media.url} 
+                  alt={streamingUpdate.data.media.description || 'Research media'} 
+                  className="w-full h-auto rounded-md"
+                />
+              )}
+              {streamingUpdate.data.media.type === 'video' && (
+                <div dangerouslySetInnerHTML={{ __html: streamingUpdate.data.media.embedCode || '' }} />
+              )}
+            </CardContent>
+          </Card>
+        );
+      case 'SOURCE':
+        return (
+          <Card className="mb-4">
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <Badge>{streamingUpdate.data.contentType}</Badge>
+                <Progress value={streamingUpdate.data.credibilityScore * 100} className="w-20" />
+              </div>
+              <h3 className="font-medium mb-1">{streamingUpdate.data.title || 'Untitled Source'}</h3>
+              <a href={streamingUpdate.data.url} target="_blank" rel="noopener noreferrer" 
+                 className="text-sm text-blue-500 hover:underline">
+                View Source
+              </a>
+            </CardContent>
+          </Card>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className={className}>
       <Card className="my-4">
@@ -100,12 +157,14 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
         </CardContent>
       </Card>
 
-      {/* Streaming Updates Display */}
-      {streamingUpdate && (
-        <StreamingResearchProgress 
-          query={progress?.currentQuery || ''} 
-          onComplete={() => {}} 
-        />
+      {/* Live Updates Section */}
+      {isResearching && (
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold mb-4">Live Updates</h3>
+          <div className="space-y-4">
+            {renderStreamingContent()}
+          </div>
+        </div>
       )}
     </div>
   );

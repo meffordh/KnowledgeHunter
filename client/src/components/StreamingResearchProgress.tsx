@@ -1,13 +1,15 @@
 'use client';
 
-import { experimental_useObject as useObject } from '@ai-sdk/react';
-import { StreamingResearchUpdateType, ResearchFindingType, ResearchMediaUpdateType, ResearchSourceAnalysisType } from '@shared/schema';
+import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { ResearchFindingType, ResearchMediaUpdateType, ResearchSourceAnalysisType } from '@shared/schema';
+import { experimental_useObject as useObject } from '@ai-sdk/react';
+import { StreamingResearchUpdateType } from '@shared/schema';
 
 interface StreamingResearchProgressProps {
   query: string;
@@ -33,7 +35,7 @@ export function StreamingResearchProgress({ query, onComplete }: StreamingResear
       </div>
       <p className="text-sm">{finding.content}</p>
       {finding.source && (
-        <a href={finding.source} target="_blank" rel="noopener noreferrer" 
+        <a href={finding.source} target="_blank" rel="noopener noreferrer"
            className="text-xs text-blue-500 hover:underline mt-2 block">
           Source
         </a>
@@ -53,9 +55,9 @@ export function StreamingResearchProgress({ query, onComplete }: StreamingResear
       </div>
       {mediaUpdate.media.type === 'image' ? (
         <div className="relative aspect-video">
-          <img 
-            src={mediaUpdate.media.url} 
-            alt={mediaUpdate.media.description || 'Research media'} 
+          <img
+            src={mediaUpdate.media.url}
+            alt={mediaUpdate.media.description || 'Research media'}
             className="object-cover rounded-md"
           />
         </div>
@@ -75,7 +77,7 @@ export function StreamingResearchProgress({ query, onComplete }: StreamingResear
         </div>
       </div>
       <h3 className="font-medium mb-1">{source.title || 'Untitled Source'}</h3>
-      <a href={source.url} target="_blank" rel="noopener noreferrer" 
+      <a href={source.url} target="_blank" rel="noopener noreferrer"
          className="text-sm text-blue-500 hover:underline">
         View Source
       </a>
@@ -93,13 +95,16 @@ export function StreamingResearchProgress({ query, onComplete }: StreamingResear
       case 'PROGRESS':
         // Progress updates are handled separately in the UI
         return null;
+      default:
+        return null;
     }
   };
+
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Research Progress</h2>
+        <h2 className="text-lg font-semibold">Research Findings</h2>
         {isLoading && <Badge variant="outline">Processing</Badge>}
       </div>
 
@@ -109,10 +114,27 @@ export function StreamingResearchProgress({ query, onComplete }: StreamingResear
         </Card>
       )}
 
-      <ScrollArea className="h-[600px] rounded-md border p-4">
-        {object && renderStreamingUpdate(object)}
-      </ScrollArea>
+      <ScrollArea className="h-[400px] rounded-md border p-4">
+        <div className="space-y-4">
+          {/* Findings Section */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Latest Findings</h3>
+            {object && object.type === 'FINDING' && renderStreamingUpdate(object)}
+          </div>
 
+          {/* Media Updates Section */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Media Content</h3>
+            {object && object.type === 'MEDIA' && renderStreamingUpdate(object)}
+          </div>
+
+          {/* Source Analysis Section */}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Source Analysis</h3>
+            {object && object.type === 'SOURCE' && renderStreamingUpdate(object)}
+          </div>
+        </div>
+      </ScrollArea>
       <div className="flex justify-end">
         <button
           onClick={() => submit({ query })}
