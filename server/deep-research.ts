@@ -868,17 +868,16 @@ async function researchQuery(
   try {
     console.log("Performing research query:", query);
 
-    // First get URLs from search
+    // Get search results from Firecrawl
     const fcResult = await firecrawl.search(query, {
       limit: 5,
-      formats: ["html", "json", "extract"]
+      formats: ["html", "json"]
     });
 
     console.log("Raw Firecrawl response:", {
       success: fcResult.success,
       dataCount: fcResult.data?.length,
-      firstItemContent: fcResult.data?.[0]?.content?.substring(0, 100),
-      firstItemMetadata: fcResult.data?.[0]?.metadata
+      firstItemSample: fcResult.data?.[0]?.content?.substring(0, 100)
     });
 
     if (!fcResult.success || !fcResult.data) {
@@ -890,77 +889,88 @@ async function researchQuery(
       };
     }
 
-    // Get URLs from search results
+    // Get URLs and prepare data for GPT
     const urls = fcResult.data.map(item => item.url).filter(Boolean);
+    const fullResults = fcResult.data.map(result => ({
+      url: result.url,
+      title: result.title || '',
+      description: result.description || '',
+      content: result.content || '',
+      metadata: result.metadata || {}
+    }));
 
-    // Use extract with our schema to get structured content
-    const extractResult = await firecrawl.extract(urls, {
-      prompt: `For the following query: ${query}, based on the content your job is to identify all "findings" which are specific facts, details and statistics from the page relevant to the query. Additionally, return any "media" which are relevant to the query as an array of objects including the fully qualified url of the asset or the fully constructed url of the video, as well as a description of the asset based on the information provided, and the type of asset which should always be either "image" or "video"`,
-      schema: ExtractedContent
+    // Construct the prompt for GPT-4o
+    const prompt = `
+You are given a research query and an array of search result objects. Each result object contains properties like "url", "title", "description", "content", and "metadata".
+
+For the given query: "${query}", produce a JSON object that follows exactly this schema: {
+  "findings": string[],
+  "media": [{ "type": "image" | "video", "url": string, "description": string }]
+}
+
+Extract from the content specific findings (facts, details, statistics) relevant to the query, and also extract any media information as described. Do not include any additional keys.
+
+Input Data: ${JSON.stringify(fullResults, null, 2)}`.trim();
+
+    // Make a single GPT-4o call with structured output
+    const response = await openai.chat.completions.create({
+      model: MODEL_CONFIG.BALANCED.name,
+      messages: [
+        {
+          role: "system",
+          content: "You are a precise JSON generator. Your response must be ONLY valid JSON and nothing else."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 1500,
     });
 
-    console.log("Extract result:", {
-      success: extractResult.success,
-      dataCount: extractResult.data?.length,
-      sampleFindings: extractResult.data?.[0]?.findings?.slice(0, 2)
-    });
-
-    if (!extractResult.success || !extractResult.data) {
-      console.warn(`Failed to extract content for query: ${query}`);
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      console.error("Empty response from OpenAI");
       return {
-        findings: ["Error extracting content."],
+        findings: ["Error processing content."],
         urls,
         media: [],
       };
     }
 
-    // Initialize arrays for findings and media
-    const allFindings: string[] = [];
-    const allMedia: MediaContent[] = [];
+    try {
+      // Parse and validate the response using our ExtractedContent schema
+      const parsedContent = ExtractedContent.parse(JSON.parse(content));
 
-    // Process each result from the extraction
-    if (Array.isArray(extractResult.data)) {
-      extractResult.data.forEach((result) => {
-        if (result?.findings) {
-          allFindings.push(...result.findings);
+      console.log(
+        `Research results for "${query}":`,
+        {
+          findingsCount: parsedContent.findings.length,
+          mediaCount: parsedContent.media.length,
+          urlsCount: urls.length,
+          sampleFindings: parsedContent.findings.slice(0, 2)
         }
-        if (result?.media) {
-          allMedia.push(...result.media.map(m => ({
-            type: m.type as "video" | "image",
-            url: m.url,
-            description: m.description
-          })));
-        }
-      });
-    } else if (extractResult.data.findings) {
-      // Handle single result case
-      allFindings.push(...extractResult.data.findings);
-      if (extractResult.data.media) {
-        allMedia.push(...extractResult.data.media.map(m => ({
+      );
+
+      return {
+        findings: parsedContent.findings,
+        urls,
+        media: parsedContent.media.map(m => ({
           type: m.type as "video" | "image",
           url: m.url,
           description: m.description
-        })));
-      }
+        }))
+      };
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI response:", parseError);
+      console.error("Raw response content:", content);
+      return {
+        findings: ["Error parsing research results."],
+        urls,
+        media: []
+      };
     }
-
-    // If we still have no findings, add a placeholder
-    if (allFindings.length === 0) {
-      console.warn(`No usable content found for query: ${query}`);
-      allFindings.push("No relevant findings available for this query....");
-    }
-
-    console.log(
-      `Research results for "${query}":`,
-      {
-        findingsCount: allFindings.length,
-        mediaCount: allMedia.length,
-        urlsCount: urls.length,
-        sampleFindings: allFindings.slice(0, 2)
-      }
-    );
-
-    return { findings: allFindings, urls, media: allMedia };
   } catch (error) {
     console.error("Error in researchQuery for query:", query, error);
     return {
