@@ -3,6 +3,7 @@ import { Research, ResearchProgress, StreamingResearchUpdateType } from '@shared
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocation } from 'wouter';
+import { useClerk } from '@clerk/clerk-react';
 
 type ResearchContextType = {
   startResearch: (research: Research) => void;
@@ -20,6 +21,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const [isResearching, setIsResearching] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { session } = useClerk();
   const [, setLocation] = useLocation();
 
   const startResearch = useCallback(async (research: Research) => {
@@ -46,15 +48,17 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
     setIsResearching(false);
 
     try {
-      const host = window.location.host;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${host}/ws`;
-      console.log('Connecting to WebSocket URL:', wsUrl);
-
-      const token = await user.getToken();
+      const token = await session?.getToken();
       if (!token) {
         throw new Error('Failed to get authentication token');
       }
+
+      // Get the window location and construct WebSocket URL
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = window.location.host;
+      const wsUrl = `${wsProtocol}//${wsHost}/ws`;
+
+      console.log('Connecting to WebSocket URL:', wsUrl);
 
       const ws = new WebSocket(wsUrl);
 
@@ -62,7 +66,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
         console.log('WebSocket connection established');
         setIsResearching(true);
 
-        // Send research request
+        // Send research request with auth token
         const message = {
           authorization: `Bearer ${token}`,
           ...research,
@@ -143,7 +147,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       console.error('Error setting up WebSocket:', error);
       handleError(error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [toast, socket, isResearching, user, setLocation]);
+  }, [toast, socket, isResearching, user, session, setLocation]);
 
   const handleError = (errorMessage: string) => {
     if (errorMessage?.toLowerCase().includes('authentication') || 
