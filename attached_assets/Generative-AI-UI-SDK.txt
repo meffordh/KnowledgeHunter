@@ -1,0 +1,234 @@
+Below is an approach you can take to integrate Vercel’s AI UI SDK into your existing app so that instead of making multiple extraction calls or mapping each Firecrawl result individually, you instead pass the entire Firecrawl search response to GPT‑4o and then dynamically generate UI components based on the streamed, structured JSON response. This allows you to support different Zod schemas (each representing a possible output shape) and have the UI update in real time as the model streams its multi‑step JSON output.
+
+Below are detailed instructions:
+
+1. Modify the Extraction Step in Your Research Process
+Current State:
+Your current process in researchQuery obtains a Firecrawl search response (which includes properties such as title, description, markdown, html, metadata, etc.) and then calls firecrawl.extract to re‑scrape pages. You want to instead send the entire result set (all properties for each result) to GPT‑4o in one call.
+
+Update:
+
+In your researchQuery function (in server/deep-research.ts), after calling:
+
+ts
+Copy
+const fcResult = await firecrawl.search(query, { limit: 5, formats: ["html", "json", "extract"] });
+keep the full results (for example, assign:
+
+ts
+Copy
+const fullResults = fcResult.data;
+)—this includes the markdown content, metadata, ogimage, etc.
+
+Next, build a prompt that instructs GPT‑4o to generate structured output in one JSON object. For example, your prompt might look like this:
+
+ts
+Copy
+const prompt = `
+For the research query "${query}", you are given an array of search result objects. Each object includes properties such as "url", "title", "description", "markdown", "html", and "metadata". Your task is to parse this array and produce a JSON object that adheres exactly to the following schema: { "query": string, "results": [ { "url": string, "findings": [string], "media": [ { "type": "image" | "video", "url": string, "description": string } ] }, ... ] }
+
+Use the content provided in the input below to extract relevant facts, details, and statistics (as "findings") and also extract any media information (as described) from each result.
+
+Input Data: ${JSON.stringify(fullResults, null, 2)} `.trim();
+
+php
+Copy
+
+- Then, use your OpenAI client to call GPT‑4o (for example, using your `openai.chat.completions.create` method) with the above prompt. Make sure to include a system message that instructs the model to return only valid JSON with no additional text.
+
+---
+
+### 2. Update Your Server-Side Extraction Flow
+
+**Example Implementation in `deep-research.ts`:**
+
+```ts
+// Import your model config and OpenAI client
+import { openai } from '@ai-sdk/openai';
+import { MODEL_CONFIG } from './modelConfig'; // Assuming you have a config for model names/tokens
+
+// Define your Zod schema for the structured output (ExtractedContent)
+import { ExtractedContent } from '@shared/schema'; // Ensure this schema matches the desired output
+
+async function researchQuery(query: string): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
+try {
+  console.log("Performing research query:", query);
+
+  // Obtain full search results from Firecrawl
+  const fcResult = await firecrawl.search(query, {
+    limit: 5,
+    formats: ["html", "json", "extract"],
+  });
+  if (!fcResult.success || !fcResult.data) {
+    console.warn(`Failed to get search results for query: ${query}`);
+    return { findings: ["Error retrieving search results."], urls: [], media: [] };
+  }
+
+  // Preserve full results for processing
+  const fullResults = fcResult.data;
+  const urls = fullResults.map((r: any) => r.url);
+
+  // Build a prompt with the entire Firecrawl response
+  const prompt = `
+For the research query "${query}", you are provided with an array of search result objects.
+Each object contains various properties, including "url", "title", "description", "markdown", "html", and "metadata".
+Your task is to extract all specific findings (facts, details, statistics) relevant to the query and any media information.
+For media, output an array where each object has keys: "type" (only "image" or "video"), "url", and "description".
+
+Return ONLY a JSON object that adheres exactly to this schema:
+{
+"query": string,
+"results": [
+  {
+    "url": string,
+    "findings": [string],
+    "media": [
+      { "type": "image" | "video", "url": string, "description": string }
+    ]
+  },
+  ...
+]
+}
+
+Input Data:
+${JSON.stringify(fullResults, null, 2)}
+  `.trim();
+
+  // Make a single GPT-4o call for structured extraction
+  const response = await openai.chat.completions.create({
+    model: MODEL_CONFIG.BALANCED.name, // e.g., "gpt-4o-2024-11-20"
+    messages: [
+      {
+        role: "system",
+        content: "You are a precise JSON generator. Your response must be ONLY valid JSON with no additional commentary.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    max_tokens: 1500,
+  });
+
+  const contentResponse = response.choices[0]?.message?.content;
+  let structuredOutput;
+  try {
+    structuredOutput = JSON.parse(contentResponse || "{}");
+  } catch (err) {
+    console.error("Error parsing GPT response:", err);
+    structuredOutput = { query, results: [] };
+  }
+
+  // Validate the structured output using your Zod schema (optional)
+  // const validatedOutput = ExtractedContent.parse(structuredOutput);
+
+  // Merge findings and media from all results
+  const allFindings: string[] = [];
+  const allMedia: MediaContent[] = [];
+  if (structuredOutput.results && Array.isArray(structuredOutput.results)) {
+    structuredOutput.results.forEach((result: any) => {
+      if (result.findings) allFindings.push(...result.findings);
+      if (result.media) {
+        allMedia.push(...result.media.map((m: any) => ({
+          type: m.type as "image" | "video",
+          url: m.url,
+          description: m.description,
+        })));
+      }
+    });
+  }
+
+  if (allFindings.length === 0) {
+    console.warn(`No usable content found for query: ${query}`);
+    allFindings.push("No relevant findings available for this query.");
+  }
+
+  console.log(`Research results for "${query}":`, {
+    findingsCount: allFindings.length,
+    mediaCount: allMedia.length,
+    urlsCount: urls.length,
+  });
+
+  return { findings: allFindings, urls, media: allMedia };
+} catch (error) {
+  console.error("Error in researchQuery for query:", query, error);
+  return {
+    findings: [`Error processing query: ${error instanceof Error ? error.message : String(error)}`],
+    urls: [],
+    media: [],
+  };
+}
+}
+3. Integrate the AI UI SDK for a Generative, Dynamic UI
+Using Vercel’s AI UI SDK, you can now stream the structured JSON response from GPT‑4o to dynamically generate UI components. For example:
+
+On the client side, you can use the useObject hook from the AI UI SDK to send your request to your API (which now returns structured data) and then render UI components based on that object.
+Example Component using useObject:
+
+tsx
+Copy
+'use client';
+
+import { experimental_useObject as useObject } from '@ai-sdk/react';
+import { ExtractedContent } from '@shared/schema'; // your Zod schema
+
+export default function StructuredResults() {
+  const { object, submit, isLoading, error } = useObject<ExtractedContent>({
+    api: '/api/structured-extraction', // Create an endpoint that calls researchQuery
+    schema: ExtractedContent,
+  });
+
+  return (
+    <div>
+      <button onClick={() => submit({ query: "what happened to ancient rome" })}>
+        Generate Structured Results
+      </button>
+
+      {isLoading && <div>Loading results...</div>}
+      {error && <div>Error occurred: {error.message}</div>}
+
+      {object && object.results && object.results.map((result, index) => (
+        <div key={index} className="border p-4 my-2">
+          <h3>Result for URL: {result.url}</h3>
+          <ul>
+            {result.findings.map((finding, i) => (
+              <li key={i}>{finding}</li>
+            ))}
+          </ul>
+          {result.media && result.media.length > 0 && (
+            <div>
+              <h4>Media:</h4>
+              {result.media.map((m, i) => (
+                <div key={i}>
+                  <p>Type: {m.type}</p>
+                  <p>URL: {m.url}</p>
+                  <p>Description: {m.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+Backend API Endpoint:
+Create a new endpoint (e.g., /api/structured-extraction) that calls your updated researchQuery function and returns the JSON result to the client. Then, useObject will stream that object and update the UI dynamically.
+4. Benefits and Final Considerations
+Dynamic UI Generation:
+By streaming the structured JSON object, your frontend can render components dynamically. Different Zod schemas can be handled by different UI renderers, making the app flexible and adaptable.
+
+Reduced Overhead:
+You avoid making many individual GPT‑4o calls by handling the entire search result set in one prompt.
+
+Improved User Experience:
+With the AI UI SDK hooks (like useObject), you get real‑time updates, error handling, and built‑in state management. This results in a truly interactive, generative UI experience.
+
+Multi‑Step JSON Output:
+The approach supports multi‑step outputs. For example, you can have your prompt instruct GPT‑4o to return multiple objects (each following a different Zod schema), and then the UI can render multiple dynamic components based on that structure.
+
+References
+PLATFORM.OPENAI.COM
+ (Vercel AI SDK UI documentation on GitHub and npm)
+
+Following these instructions will allow your app to send the entire Firecrawl search result set to GPT‑4o in one call, receive a structured JSON response (according to your defined Zod schema), and then use Vercel’s AI UI SDK (with hooks like useObject) to dynamically generate and render UI components. This creates a highly dynamic, engaging, and flexible research interface for your end users.
