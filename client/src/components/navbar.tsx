@@ -13,8 +13,15 @@ export default function Navbar() {
   if (!user) return null;
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/auth');
+    try {
+      await signOut();
+      // Clear any local storage or state if needed
+      localStorage.clear();
+      // Force a full page reload to ensure clean state
+      window.location.href = '/auth';
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   return (
@@ -74,12 +81,13 @@ export default function Navbar() {
           <span className="text-sm text-white/80 hidden sm:inline-block">{user.email}</span>
           <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="secondary"
+              size="sm"
               onClick={handleSignOut}
-              className="text-white hover:bg-orange-600/50 hover:text-white/80 transition-colors duration-200"
+              className="text-orange-700 bg-white hover:bg-white/90 transition-colors duration-200 flex items-center gap-2"
             >
               <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
             </Button>
           </motion.div>
         </div>
