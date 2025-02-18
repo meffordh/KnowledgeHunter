@@ -7,6 +7,7 @@ import { handleResearch, generateClarifyingQuestions } from './deep-research';
 import { researchSchema } from '@shared/schema';
 import { storage } from './storage';
 import { handleLinkedInShare } from './linkedin';
+import { Research, ResearchProgress, StreamingResearchUpdate, ResearchFinding, ResearchMediaUpdate, ResearchSourceAnalysis } from "@shared/schema";
 
 export function registerRoutes(app: Express): Server {
   // Add CORS middleware

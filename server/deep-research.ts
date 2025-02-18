@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import FirecrawlApp from "@mendable/firecrawl-js";
 import { WebSocket } from "ws";
-import { Research, ResearchProgress } from "@shared/schema";
+import { Research, ResearchProgress, StreamingResearchUpdate, ResearchFinding, ResearchMediaUpdate, ResearchSourceAnalysis } from "@shared/schema";
 import { encodingForModel } from "js-tiktoken";
 import { isYouTubeVideoValid } from "./youtubeVideoValidator";
 import { fetchWithTimeout } from "./utils/fetchUtils";
@@ -167,8 +167,6 @@ interface ResearchProgressInfo {
     total: number;
   };
 }
-
-// Add media detection functionality
 
 type EnhancedProgress = ResearchProgress & ResearchProgressInfo;
 
@@ -861,9 +859,19 @@ function updateResearchContext(
 // -----------------------------
 // New Implementation: researchQuery
 // -----------------------------
-// Update researchQuery function
+// Add new helper function for creating streaming updates
+function createStreamingUpdate<T>(type: StreamingResearchUpdate['type'], data: T): StreamingResearchUpdate {
+  return {
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// Modify researchQuery to support streaming updates
 async function researchQuery(
   query: string,
+  ws?: WebSocket
 ): Promise<{ findings: string[]; urls: string[]; media: MediaContent[] }> {
   try {
     console.log("Performing research query:", query);
@@ -872,12 +880,6 @@ async function researchQuery(
     const fcResult = await firecrawl.search(query, {
       limit: 5,
       formats: ["html", "json"]
-    });
-
-    console.log("Raw Firecrawl response:", {
-      success: fcResult.success,
-      dataCount: fcResult.data?.length,
-      firstItemSample: fcResult.data?.[0]?.content?.substring(0, 100)
     });
 
     if (!fcResult.success || !fcResult.data) {
@@ -889,40 +891,40 @@ async function researchQuery(
       };
     }
 
-    // Get URLs and prepare data for GPT
-    const urls = fcResult.data.map(item => item.url).filter(Boolean);
-    const fullResults = fcResult.data.map(result => ({
-      url: result.url,
-      title: result.title || '',
-      description: result.description || '',
-      content: result.content || '',
-      metadata: result.metadata || {}
-    }));
+    // Stream source analysis updates
+    for (const result of fcResult.data) {
+      if (ws?.readyState === WebSocket.OPEN) {
+        const sourceAnalysis: ResearchSourceAnalysis = {
+          url: result.url,
+          title: result.title || undefined,
+          credibilityScore: 0.8, // This should be calculated based on source reliability
+          contentType: determineContentType(result),
+          analysisDate: new Date().toISOString(),
+        };
 
-    // Construct the prompt for GPT-4o
-    const prompt = `
-You are given a research query and an array of search result objects. Each result object contains properties like "url", "title", "description", "content", and "metadata".
+        const update = createStreamingUpdate('SOURCE', sourceAnalysis);
+        ws.send(JSON.stringify(update));
+      }
+    }
 
-For the given query: "${query}", produce a JSON object that follows exactly this schema: {
-  "findings": string[],
-  "media": [{ "type": "image" | "video", "url": string, "description": string }]
-}
-
-Extract from the content specific findings (facts, details, statistics) relevant to the query, and also extract any media information as described. Do not include any additional keys.
-
-Input Data: ${JSON.stringify(fullResults, null, 2)}`.trim();
-
-    // Make a single GPT-4o call with structured output
+    // Process content with GPT-4o and stream findings
     const response = await openai.chat.completions.create({
       model: MODEL_CONFIG.BALANCED.name,
       messages: [
         {
           role: "system",
-          content: "You are a precise JSON generator. Your response must be ONLY valid JSON and nothing else."
+          content: "Extract findings and analyze media from the provided content. Return only valid JSON."
         },
         {
           role: "user",
-          content: prompt
+          content: JSON.stringify({
+            query,
+            results: fcResult.data.map(r => ({
+              url: r.url,
+              title: r.title || '',
+              content: r.content || '',
+            }))
+          })
         }
       ],
       response_format: { type: "json_object" },
@@ -931,54 +933,68 @@ Input Data: ${JSON.stringify(fullResults, null, 2)}`.trim();
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      console.error("Empty response from OpenAI");
-      return {
-        findings: ["Error processing content."],
-        urls,
-        media: [],
-      };
+      throw new Error("Empty response from OpenAI");
     }
 
-    try {
-      // Parse and validate the response using our ExtractedContent schema
-      const parsedContent = ExtractedContent.parse(JSON.parse(content));
+    const parsedContent = JSON.parse(content);
 
-      console.log(
-        `Research results for "${query}":`,
-        {
-          findingsCount: parsedContent.findings.length,
-          mediaCount: parsedContent.media.length,
-          urlsCount: urls.length,
-          sampleFindings: parsedContent.findings.slice(0, 2)
+    // Stream findings updates
+    if (Array.isArray(parsedContent.findings)) {
+      for (const finding of parsedContent.findings) {
+        if (ws?.readyState === WebSocket.OPEN) {
+          const researchFinding: ResearchFinding = {
+            content: finding,
+            confidence: 0.9, // This should be determined by the model
+            type: 'FACT',
+            timestamp: new Date().toISOString(),
+          };
+
+          const update = createStreamingUpdate('FINDING', researchFinding);
+          ws.send(JSON.stringify(update));
         }
-      );
-
-      return {
-        findings: parsedContent.findings,
-        urls,
-        media: parsedContent.media.map(m => ({
-          type: m.type as "video" | "image",
-          url: m.url,
-          description: m.description
-        }))
-      };
-    } catch (parseError) {
-      console.error("Failed to parse OpenAI response:", parseError);
-      console.error("Raw response content:", content);
-      return {
-        findings: ["Error parsing research results."],
-        urls,
-        media: []
-      };
+      }
     }
+
+    // Process and stream media updates
+    if (Array.isArray(parsedContent.media)) {
+      for (const media of parsedContent.media) {
+        if (ws?.readyState === WebSocket.OPEN) {
+          const mediaUpdate: ResearchMediaUpdate = {
+            media,
+            processingStatus: 'PROCESSED',
+            relevanceScore: 0.85, // This should be calculated based on media relevance
+            extractedAt: new Date().toISOString(),
+          };
+
+          const update = createStreamingUpdate('MEDIA', mediaUpdate);
+          ws.send(JSON.stringify(update));
+        }
+      }
+    }
+
+    // Return the complete results
+    return {
+      findings: Array.isArray(parsedContent.findings) ? parsedContent.findings : [],
+      urls: fcResult.data.map(r => r.url),
+      media: Array.isArray(parsedContent.media) ? parsedContent.media : [],
+    };
   } catch (error) {
-    console.error("Error in researchQuery for query:", query, error);
+    console.error("Error in researchQuery:", error);
     return {
       findings: [`Error processing query: ${error instanceof Error ? error.message : String(error)}`],
       urls: [],
-      media: []
+      media: [],
     };
   }
+}
+
+// Helper function to determine content type
+function determineContentType(result: any): ResearchSourceAnalysis['contentType'] {
+  const url = result.url.toLowerCase();
+  if (url.includes('study') || url.includes('research')) return 'STUDY';
+  if (url.includes('news') || url.includes('article')) return 'NEWS';
+  if (url.includes('blog')) return 'BLOG';
+  return 'OTHER';
 }
 
 // -----------------------------
@@ -1042,7 +1058,7 @@ async function handleResearch(
 
       for (const query of queries.slice(0, context.totalBreadth)) {
         try {
-          const result = await researchQuery(query);
+          const result = await researchQuery(query, ws);
 
           // Update progress after search results
           sendProgress({
