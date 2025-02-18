@@ -1,0 +1,115 @@
+Below is a step‑by‑step plan to modify your extraction process so that, instead of mapping over each individual search result and making many parallel calls, you combine the entire FireCrawl search result set and pass it in one prompt to GPT‑4o. The GPT‑4o call is then instructed to output a structured JSON object (for example, with the keys "query" and "results" where each result contains the URL, findings, and media).
+
+Detailed Implementation Instructions
+Capture the Full Search Response
+In your existing researchQuery function (in server/deep-research.ts), after you call:
+
+ts
+Copy
+const fcResult = await firecrawl.search(query, {
+  limit: 5,
+  formats: ["html", "json", "extract"]
+});
+you already have an array of objects (each including properties like title, description, url, markdown, html, and metadata).
+
+Serialize the Entire Result Set
+Instead of extracting just URLs, keep the full objects. For example:
+
+ts
+Copy
+const fullResults = fcResult.data;
+Optionally, you might filter or trim each result’s content if needed (e.g., if the markdown is very large, you could take only the first N characters).
+
+Build a Combined Prompt for GPT‑4o
+Construct a prompt that includes:
+
+The original query.
+The full FireCrawl results (serialized as JSON) so that GPT‑4o can see all the data.
+Clear instructions to “parse” this input into your structured format.
+For example:
+
+ts
+Copy
+const prompt = `
+You are given a research query and an array of search result objects. Each result object contains properties like "url", "title", "description", "markdown", "html", and "metadata".
+
+For the given query: "${query}", produce a JSON object that follows exactly this schema: { "query": string, "results": [ { "url": string, "findings": [string], "media": [ { "type": "image" | "video", "url": string, "description": string } ] }, ... ] }
+
+Extract from the content (preferably using the "markdown" field if available) the specific findings (facts, details, statistics) relevant to the query, and also extract any media information as described. Do not include any additional keys.
+
+Input Data: ${JSON.stringify(fullResults, null, 2)} `.trim();
+
+css
+Copy
+
+4. **Make a Single GPT‑4o Call with Structured Output**  
+Use your OpenAI client to call GPT‑4o with the above prompt. For example:
+```ts
+const response = await openai.chat.completions.create({
+  model: MODEL_CONFIG.BALANCED.name, // or another configured model
+  messages: [
+    {
+      role: "system",
+      content:
+        "You are a precise JSON generator. Your response must be ONLY valid JSON and nothing else."
+    },
+    {
+      role: "user",
+      content: prompt
+    }
+  ],
+  max_tokens: 1500,
+});
+Then, parse the output:
+
+ts
+Copy
+const structuredOutput = JSON.parse(response.choices[0]?.message?.content || '{}');
+Extract the Structured Data
+Assuming your GPT‑4o call returns an object with a "query" and a "results" array, extract those values:
+
+ts
+Copy
+const allFindings: string[] = [];
+const allMedia: MediaContent[] = [];
+
+if (structuredOutput.results && Array.isArray(structuredOutput.results)) {
+  structuredOutput.results.forEach((result: any) => {
+    if (result.findings) {
+      allFindings.push(...result.findings);
+    }
+    if (result.media) {
+      allMedia.push(...result.media.map((m: any) => ({
+        type: m.type as "video" | "image",
+        url: m.url,
+        description: m.description
+      })));
+    }
+  });
+}
+Finally, return the aggregated data:
+
+ts
+Copy
+return { findings: allFindings, urls: fullResults.map((r: any) => r.url), media: allMedia };
+Testing and Edge Cases
+• Verify the GPT‑4o response strictly follows the schema.
+• Add try/catch blocks so that if JSON parsing fails, you log an error and return a fallback structure.
+• Consider trimming or summarizing very long markdown fields before passing them to GPT‑4o to avoid token limits.
+
+Document Your Changes with Comments
+In your updated code, add clear inline comments. For example:
+
+ts
+Copy
+// Build a combined prompt from the entire FireCrawl search result set.
+// The prompt instructs GPT‑4o to produce structured JSON according to our schema.
+This will ensure that future developers (or your AI development agent) can understand the design.
+
+Why This Approach?
+By passing the entire FireCrawl result set to GPT‑4o in one call, you avoid:
+
+Multiple round-trips for each URL.
+The overhead of parallel calls (and potential rate-limiting issues).
+The need to merge many separate responses.
+This single aggregated call can be more efficient if the total token count of the combined results is manageable within GPT‑4o’s context window. (Be sure to monitor token usage if you expect many large pages.)
