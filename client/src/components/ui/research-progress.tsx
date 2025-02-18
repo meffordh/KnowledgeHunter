@@ -87,6 +87,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
 
     switch (streamingUpdate.type) {
       case 'FINDING':
+        const findingData = streamingUpdate.data.content;
         return (
           <Card className="mb-4">
             <CardContent className="pt-4">
@@ -96,7 +97,20 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
                   {new Date(streamingUpdate.timestamp).toLocaleTimeString()}
                 </span>
               </div>
-              <p className="text-sm">{streamingUpdate.data.content}</p>
+              {typeof findingData === 'string' ? (
+                <p className="text-sm">{findingData}</p>
+              ) : (
+                <div className="text-sm">
+                  <h4 className="font-medium">{findingData.title}</h4>
+                  <a href={findingData.url} target="_blank" rel="noopener noreferrer" 
+                     className="text-blue-500 hover:underline">
+                    View Source
+                  </a>
+                  {findingData.media_analysis && (
+                    <p className="mt-2 text-muted-foreground">{findingData.media_analysis}</p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         );

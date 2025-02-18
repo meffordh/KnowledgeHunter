@@ -1,0 +1,71 @@
+[vite] connecting...
+DOMException {}
+
+Clerk: Clerk has been loaded with development keys. Development instances have strict usage limits and should not be used when deploying your application to production. Learn more: https://clerk.com/docs/deployments/overview
+Connecting to WebSocket URL: wss://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/ws
+WebSocket connection established
+Sending research request: 
+Object {authorization: "Bearer…", query: "timeline and key events around roman empire", fastMode: false, clarifications: {…}, userId: "user_2shKPR1HGxiF1xKxsOq4VEtUrMC"}
+Received WebSocket message: 
+Object {status: "IN_PROGRESS", currentQuery: "timeline and key events around roman empire", learnings: Array(0), progress: 0, totalProgress: 4, …}
+Received WebSocket message: 
+Object {type: "SOURCE", data: {…}, timestamp: "2025-02-18T16:53:36.350Z"}
+Received WebSocket message: 
+Object {type: "SOURCE", data: {…}, timestamp: "2025-02-18T16:53:36.350Z"}
+Received WebSocket message: 
+Object {type: "SOURCE", data: {…}, timestamp: "2025-02-18T16:53:36.350Z"}
+Received WebSocket message: 
+Object {type: "SOURCE", data: {…}, timestamp: "2025-02-18T16:53:36.351Z"}
+Received WebSocket message: 
+Object {type: "SOURCE", data: {…}, timestamp: "2025-02-18T16:53:36.351Z"}
+Received WebSocket message: 
+Object {type: "FINDING", data: {…}, timestamp: "2025-02-18T16:53:43.477Z"}
+Received WebSocket message: 
+Object {type: "FINDING", data: {…}, timestamp: "2025-02-18T16:53:43.477Z"}
+Objects are not valid as a React child (found: object with keys {title, url, media_analysis}). If you meant to render a collection of children, use an array instead.
+Objects are not valid as a React child (found: object with keys {title, url, media_analysis}). If you meant to render a collection of children, use an array instead.
+The above error occurred in the <p> component:
+
+    at p
+    at div
+    at _c9 (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:106:12)
+    at div
+    at _c (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:20:11)
+    at div
+    at div
+    at div
+    at ResearchProgressDisplay (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/research-progress.tsx:25:43)
+    at div
+    at div
+    at _c9 (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:106:12)
+    at div
+    at _c (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:20:11)
+    at div
+    at div
+    at div
+    at HomePage (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/pages/home-page.tsx:47:54)
+    at ProtectedRoute (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/lib/protected-route.tsx:22:3)
+    at Switch (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=61de77c1:247:17)
+    at div
+    at div
+    at MotionComponent (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/framer-motion.js?v=61de77c1:6536:40)
+    at _c (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/base-layout.tsx:20:45)
+    at div
+    at Router (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/App.tsx?v=W1BJOLCKfdNemLnSEC6C1:36:20)
+    at ResearchProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-research.tsx:24:36)
+    at AuthProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-auth.tsx:22:32)
+    at QueryClientProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=61de77c1:2805:3)
+    at App
+    at SWRConfig (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-5NIB2AQL.js?v=61de77c1:466:11)
+    at OrganizationProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=61de77c1:596:3)
+    at ClerkContextProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=61de77c1:4135:11)
+    at ClerkProviderBase (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=61de77c1:4209:11)
+    at Hoc (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=61de77c1:2269:5)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+Objects are not valid as a React child (found: object with keys {title, url, media_analysis}). If you meant to render a collection of children, use an array instead.
+Received WebSocket message: 
+Object {type: "FINDING", data: {…}, timestamp: "2025-02-18T16:53:43.477Z"}
+Received WebSocket message: 
+Object {type: "FINDING", data: {…}, ti
