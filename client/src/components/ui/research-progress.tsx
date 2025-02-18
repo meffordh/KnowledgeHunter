@@ -5,32 +5,35 @@ import { Progress } from "@/components/ui/progress";
 import { ResearchProgress } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { StreamingResearchProgress } from "@/components/StreamingResearchProgress";
+import { useResearch } from "@/hooks/use-research";
 
 interface ResearchProgressDisplayProps {
-  progress: ResearchProgress | null;
   className?: string;
 }
 
-export function ResearchProgressDisplay({ progress, className }: ResearchProgressDisplayProps) {
-  if (!progress) return null;
+export function ResearchProgressDisplay({ className }: ResearchProgressDisplayProps) {
+  const { progress, streamingUpdate, isResearching } = useResearch();
+
+  if (!progress && !streamingUpdate) return null;
 
   // Calculate overall progress percentage
-  const progressPercentage = progress.status === 'COMPLETED' 
+  const progressPercentage = progress?.status === 'COMPLETED' 
     ? 100 
-    : Math.round((progress.progress / progress.totalProgress) * 100);
+    : Math.round((progress?.progress || 0) / (progress?.totalProgress || 1) * 100);
 
   // Status text based on current state
   const getStatusText = () => {
-    if (progress.status === 'ERROR') return progress.error || 'An error occurred';
-    if (progress.status === 'COMPLETED') return 'Research completed successfully!';
-    if (!progress.learnings?.length) return 'Searching and extracting information...';
+    if (progress?.status === 'ERROR') return progress.error || 'An error occurred';
+    if (progress?.status === 'COMPLETED') return 'Research completed successfully!';
+    if (!progress?.learnings?.length) return 'Searching and extracting information...';
     return 'Processing research findings...';
   };
 
   // Show progress stages
   const showProgressDetails = () => {
-    const batchProgress = progress.batchProgress;
-    const confidence = progress.completionConfidence;
+    const batchProgress = progress?.batchProgress;
+    const confidence = progress?.completionConfidence;
 
     return (
       <div className="space-y-4">
@@ -44,31 +47,31 @@ export function ResearchProgressDisplay({ progress, className }: ResearchProgres
         </div>
 
         {/* Batch Progress */}
-        {batchProgress && progress.status !== 'COMPLETED' && (
+        {batchProgress && progress?.status !== 'COMPLETED' && (
           <div className="text-sm">
             <span className="font-medium">Processing findings: </span>
             <span className="text-muted-foreground">
               Batch {batchProgress.current} of {batchProgress.total}
             </span>
             <Progress 
-              value={progress.status === 'COMPLETED' ? 100 : (batchProgress.current / batchProgress.total) * 100}
+              value={progress?.status === 'COMPLETED' ? 100 : (batchProgress.current / batchProgress.total) * 100}
               className="mt-2"
             />
           </div>
         )}
 
         {/* Research Confidence */}
-        {(confidence !== undefined || progress.status === 'COMPLETED') && (
+        {(confidence !== undefined || progress?.status === 'COMPLETED') && (
           <div className="text-sm">
             <span className="font-medium">Research confidence: </span>
             <span className="text-muted-foreground">
-              {progress.status === 'COMPLETED' ? '100' : Math.round(confidence * 100)}%
+              {progress?.status === 'COMPLETED' ? '100' : Math.round(confidence * 100)}%
             </span>
           </div>
         )}
 
         {/* Sources Count */}
-        {progress.visitedUrls && progress.visitedUrls.length > 0 && (
+        {progress?.visitedUrls && progress.visitedUrls.length > 0 && (
           <div className="text-sm">
             <span className="font-medium">Sources analyzed: </span>
             <span className="text-muted-foreground">{progress.visitedUrls.length}</span>
@@ -79,22 +82,32 @@ export function ResearchProgressDisplay({ progress, className }: ResearchProgres
   };
 
   return (
-    <Card className={cn("my-4", className)}>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-2 text-muted-foreground mb-4">
-          {progress.status !== 'COMPLETED' && <Loader2 className="h-4 w-4 animate-spin" />}
-          <span>{getStatusText()}</span>
-        </div>
-        {showProgressDetails()}
-
-        {/* Show the report when completed */}
-        {progress.status === 'COMPLETED' && progress.report && (
-          <div className="mt-6 prose prose-sm max-w-none">
-            <SafeMarkdown content={progress.report} />
+    <div className={className}>
+      <Card className="my-4">
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-2 text-muted-foreground mb-4">
+            {isResearching && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>{getStatusText()}</span>
           </div>
-        )}
-      </CardContent>
-    </Card>
+          {showProgressDetails()}
+
+          {/* Show the report when completed */}
+          {progress?.status === 'COMPLETED' && progress.report && (
+            <div className="mt-6 prose prose-sm max-w-none">
+              <SafeMarkdown content={progress.report} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Streaming Updates Display */}
+      {streamingUpdate && (
+        <StreamingResearchProgress 
+          query={progress?.currentQuery || ''} 
+          onComplete={() => {}} 
+        />
+      )}
+    </div>
   );
 }
 
