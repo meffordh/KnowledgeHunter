@@ -928,7 +928,7 @@ async function researchQuery(
         }
       ],
       response_format: { type: "json_object" },
-      max_tokens: 1500,
+      max_tokens: 5000,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -991,7 +991,7 @@ async function researchQuery(
 // Helper function to determine content type
 function determineContentType(result: any): ResearchSourceAnalysis['contentType'] {
   const url = result.url.toLowerCase();
-  if (url.includes('study') || url.includes('research')) return 'STUDY';
+  if (url.includes('study') || url.includes('research') || url.include('gov')) return 'STUDY';
   if (url.includes('news') || url.includes('article')) return 'NEWS';
   if (url.includes('blog')) return 'BLOG';
   return 'OTHER';
