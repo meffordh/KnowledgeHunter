@@ -17,10 +17,20 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
   const { progress, streamingUpdate, isResearching } = useResearch();
   const [updates, setUpdates] = useState<StreamingResearchUpdateType[]>([]);
 
-  // Keep track of all updates
+  // Keep track of all updates with deduplication
   useEffect(() => {
     if (streamingUpdate) {
-      setUpdates(prev => [...prev, streamingUpdate]);
+      setUpdates(prev => {
+        const id = `${streamingUpdate.type}-${streamingUpdate.timestamp}-${Math.random()}`;
+        const newUpdate = { ...streamingUpdate, id };
+        // Deduplicate based on content
+        const isDuplicate = prev.some(u => 
+          u.type === newUpdate.type && 
+          JSON.stringify(u.data) === JSON.stringify(newUpdate.data)
+        );
+        if (isDuplicate) return prev;
+        return [...prev, newUpdate];
+      });
     }
   }, [streamingUpdate]);
 
@@ -90,12 +100,12 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
     );
   };
 
-  const renderStreamingContent = (update: StreamingResearchUpdateType) => {
+  const renderStreamingContent = (update: StreamingResearchUpdateType & { id: string }) => {
     switch (update.type) {
       case 'FINDING':
         const findingData = update.data.content;
         return (
-          <Card key={update.timestamp} className="mb-4">
+          <Card key={update.id} className="mb-4">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
                 <Badge variant="default">{update.data.type}</Badge>
@@ -122,7 +132,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
         );
       case 'MEDIA':
         return (
-          <Card key={update.timestamp} className="mb-4">
+          <Card key={update.id} className="mb-4">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
                 <Badge variant="default">{update.data.media.type}</Badge>
@@ -143,12 +153,30 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
                     </p>
                   )}
                 </div>
-              ) : update.data.media.type === 'video' && update.data.media.embedCode ? (
+              ) : update.data.media.type === 'video' ? (
                 <div className="mt-2">
-                  <div 
-                    className="aspect-video"
-                    dangerouslySetInnerHTML={{ __html: update.data.media.embedCode }} 
-                  />
+                  {update.data.media.embedCode ? (
+                    <div 
+                      className="aspect-video"
+                      dangerouslySetInnerHTML={{ __html: update.data.media.embedCode }} 
+                    />
+                  ) : (
+                    <div className="aspect-video bg-muted rounded-md flex items-center justify-center">
+                      <a 
+                        href={update.data.media.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center text-muted-foreground hover:text-primary"
+                      >
+                        <img 
+                          src={`https://img.youtube.com/vi/${update.data.media.url.split('v=')[1]}/0.jpg`}
+                          alt="Video thumbnail"
+                          className="w-full h-auto rounded-md"
+                        />
+                        <span className="mt-2">Watch on YouTube</span>
+                      </a>
+                    </div>
+                  )}
                   {update.data.media.description && (
                     <p className="mt-2 text-sm text-muted-foreground">
                       {update.data.media.description}
@@ -161,7 +189,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
         );
       case 'SOURCE':
         return (
-          <Card key={update.timestamp} className="mb-4">
+          <Card key={update.id} className="mb-4">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
                 <Badge>{update.data.contentType}</Badge>
@@ -213,7 +241,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {sourceUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Sources</h4>
-              {sourceUpdates.map(update => renderStreamingContent(update))}
+              {sourceUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
             </div>
           )}
 
@@ -221,7 +249,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {findingUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Findings</h4>
-              {findingUpdates.map(update => renderStreamingContent(update))}
+              {findingUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
             </div>
           )}
 
@@ -229,7 +257,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {mediaUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Media</h4>
-              {mediaUpdates.map(update => renderStreamingContent(update))}
+              {mediaUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
             </div>
           )}
         </div>

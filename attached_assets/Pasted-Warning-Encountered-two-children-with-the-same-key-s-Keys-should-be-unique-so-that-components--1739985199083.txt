@@ -1,0 +1,31 @@
+Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 2025-02-19T17:10:36.067Z 
+    at div
+    at div
+    at div
+    at ResearchProgressDisplay (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/research-progress.tsx:26:43)
+    at div
+    at div
+    at _c9 (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:106:12)
+    at div
+    at _c (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/card.tsx:20:11)
+    at div
+    at div
+    at div
+    at HomePage (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/pages/home-page.tsx:47:54)
+    at ProtectedRoute (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/lib/protected-route.tsx:22:3)
+    at Switch (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=243343cf:247:17)
+    at div
+    at div
+    at MotionComponent (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/framer-motion.js?v=243343cf:6536:40)
+    at _c (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/components/ui/base-layout.tsx:20:45)
+    at div
+    at Router (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/App.tsx?v=pHQ5bAXr5_GqUSbQ6Sh9t:36:20)
+    at ResearchProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-research.tsx:24:36)
+    at AuthProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/src/hooks/use-auth.tsx:22:32)
+    at QueryClientProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=243343cf:2805:3)
+    at App
+    at SWRConfig (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-5NIB2AQL.js?v=243343cf:466:11)
+    at OrganizationProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=243343cf:596:3)
+    at ClerkContextProvider (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=243343cf:4135:11)
+    at ClerkProviderBase (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=243343cf:4209:11)
+    at Hoc (https://b436b34e-fa7f-46d7-a081-bd94d507e5d1-00-37mvm3ai475p3.worf.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@clerk_clerk-react.js?v=243343cf:2269:5)
