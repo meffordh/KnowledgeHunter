@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { SafeMarkdown } from "@/components/ui/safe-markdown";
 import { Progress } from "@/components/ui/progress";
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { StreamingResearchProgress } from "@/components/StreamingResearchProgress";
 import { useResearch } from "@/hooks/use-research";
-import {Badge} from "@/components/ui/badge"
+import {Badge} from "@/components/ui/badge";
 
 interface ResearchProgressDisplayProps {
   className?: string;
@@ -15,6 +15,14 @@ interface ResearchProgressDisplayProps {
 
 export function ResearchProgressDisplay({ className }: ResearchProgressDisplayProps) {
   const { progress, streamingUpdate, isResearching } = useResearch();
+  const [updates, setUpdates] = useState<StreamingResearchUpdateType[]>([]);
+
+  // Keep track of all updates
+  useEffect(() => {
+    if (streamingUpdate) {
+      setUpdates(prev => [...prev, streamingUpdate]);
+    }
+  }, [streamingUpdate]);
 
   if (!progress && !streamingUpdate) return null;
 
@@ -82,19 +90,17 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
     );
   };
 
-  const renderStreamingContent = () => {
-    if (!streamingUpdate) return null;
-
-    switch (streamingUpdate.type) {
+  const renderStreamingContent = (update: StreamingResearchUpdateType) => {
+    switch (update.type) {
       case 'FINDING':
-        const findingData = streamingUpdate.data.content;
+        const findingData = update.data.content;
         return (
-          <Card className="mb-4">
+          <Card key={update.timestamp} className="mb-4">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
-                <Badge variant="default">{streamingUpdate.data.type}</Badge>
+                <Badge variant="default">{update.data.type}</Badge>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(streamingUpdate.timestamp).toLocaleTimeString()}
+                  {new Date(update.timestamp).toLocaleTimeString()}
                 </span>
               </div>
               {typeof findingData === 'string' ? (
@@ -116,31 +122,53 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
         );
       case 'MEDIA':
         return (
-          <Card className="mb-4">
+          <Card key={update.timestamp} className="mb-4">
             <CardContent className="pt-4">
-              {streamingUpdate.data.media.type === 'image' && (
-                <img 
-                  src={streamingUpdate.data.media.url} 
-                  alt={streamingUpdate.data.media.description || 'Research media'} 
-                  className="w-full h-auto rounded-md"
-                />
-              )}
-              {streamingUpdate.data.media.type === 'video' && (
-                <div dangerouslySetInnerHTML={{ __html: streamingUpdate.data.media.embedCode || '' }} />
-              )}
+              <div className="flex items-center justify-between mb-2">
+                <Badge variant="default">{update.data.media.type}</Badge>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(update.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              {update.data.media.type === 'image' ? (
+                <div className="mt-2">
+                  <img 
+                    src={update.data.media.url} 
+                    alt={update.data.media.description || 'Research media'} 
+                    className="w-full h-auto rounded-md"
+                  />
+                  {update.data.media.description && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {update.data.media.description}
+                    </p>
+                  )}
+                </div>
+              ) : update.data.media.type === 'video' && update.data.media.embedCode ? (
+                <div className="mt-2">
+                  <div 
+                    className="aspect-video"
+                    dangerouslySetInnerHTML={{ __html: update.data.media.embedCode }} 
+                  />
+                  {update.data.media.description && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {update.data.media.description}
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         );
       case 'SOURCE':
         return (
-          <Card className="mb-4">
+          <Card key={update.timestamp} className="mb-4">
             <CardContent className="pt-4">
               <div className="flex items-center justify-between mb-2">
-                <Badge>{streamingUpdate.data.contentType}</Badge>
-                <Progress value={streamingUpdate.data.credibilityScore * 100} className="w-20" />
+                <Badge>{update.data.contentType}</Badge>
+                <Progress value={update.data.credibilityScore * 100} className="w-20" />
               </div>
-              <h3 className="font-medium mb-1">{streamingUpdate.data.title || 'Untitled Source'}</h3>
-              <a href={streamingUpdate.data.url} target="_blank" rel="noopener noreferrer" 
+              <h3 className="font-medium mb-1">{update.data.title || 'Untitled Source'}</h3>
+              <a href={update.data.url} target="_blank" rel="noopener noreferrer" 
                  className="text-sm text-blue-500 hover:underline">
                 View Source
               </a>
@@ -151,6 +179,11 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
         return null;
     }
   };
+
+  // Group updates by type
+  const findingUpdates = updates.filter(u => u.type === 'FINDING');
+  const mediaUpdates = updates.filter(u => u.type === 'MEDIA');
+  const sourceUpdates = updates.filter(u => u.type === 'SOURCE');
 
   return (
     <div className={className}>
@@ -175,9 +208,30 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
       {isResearching && (
         <div className="mt-4">
           <h3 className="text-lg font-semibold mb-4">Live Updates</h3>
-          <div className="space-y-4">
-            {renderStreamingContent()}
-          </div>
+
+          {/* Sources Section */}
+          {sourceUpdates.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-md font-medium mb-3">Sources</h4>
+              {sourceUpdates.map(update => renderStreamingContent(update))}
+            </div>
+          )}
+
+          {/* Findings Section */}
+          {findingUpdates.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-md font-medium mb-3">Findings</h4>
+              {findingUpdates.map(update => renderStreamingContent(update))}
+            </div>
+          )}
+
+          {/* Media Section */}
+          {mediaUpdates.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-md font-medium mb-3">Media</h4>
+              {mediaUpdates.map(update => renderStreamingContent(update))}
+            </div>
+          )}
         </div>
       )}
     </div>
