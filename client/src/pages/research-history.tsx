@@ -8,7 +8,8 @@ import { format } from "date-fns";
 import { ShareButton } from "@/components/ui/share-button";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { ResearchProgressDisplay, FindingsAccordion } from "@/components/ui/research-progress";
+import { ResearchProgressDisplay } from "@/components/ui/research-progress";
+import { SafeMarkdown } from "@/components/ui/safe-markdown";
 
 export default function ResearchHistoryPage() {
   const { user } = useAuth(); 
@@ -131,17 +132,8 @@ export default function ResearchHistoryPage() {
               </CardHeader>
               <CardContent>
                 <div className="prose prose-sm max-w-none">
-                  {report.report.slice(0, 200)}...
+                  <SafeMarkdown content={report.report.slice(0, 200) + '...'} />
                 </div>
-                {report.learnings && report.learnings.length > 0 && (
-                  <FindingsAccordion
-                    findings={report.learnings.map((learning, idx) => ({
-                      title: `Finding ${idx + 1}`,
-                      content: learning
-                    }))}
-                    className="mt-4"
-                  />
-                )}
                 {report.visitedUrls && report.visitedUrls.length > 0 && (
                   <div className="mt-4">
                     <p className="text-sm font-medium">Sources: {report.visitedUrls.length}</p>
