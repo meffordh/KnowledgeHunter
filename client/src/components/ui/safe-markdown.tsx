@@ -9,10 +9,14 @@ interface SafeMarkdownProps {
 
 export function SafeMarkdown({ content }: SafeMarkdownProps) {
   // Clean up content by removing HTML anchor tags and fixing formatting
-  const cleanContent = content
-    .replace(/<a\s+name="[^"]*"><\/a>/g, '') // Remove empty anchor tags
-    .replace(/(<\/?)h([1-6])(>)/g, '$1h$2$3\n\n') // Ensure headers have proper spacing
-    .replace(/\n{3,}/g, '\n\n'); // Normalize multiple newlines
+  const cleanContent = typeof content === 'string' 
+    ? content
+        .replace(/<a\s+name="[^"]*"><\/a>/g, '') // Remove empty anchor tags
+        .replace(/(<\/?)h([1-6])(>)/g, '$1h$2$3\n\n') // Ensure headers have proper spacing
+        .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+        .replace(/<\/?p>/g, '\n\n') // Convert p tags to newlines
+        .replace(/<\/?br\/?>/g, '\n') // Convert br tags to newlines
+    : String(content); // Handle non-string content by converting to string
 
   return (
     <MarkdownErrorBoundary>
@@ -130,9 +134,13 @@ export function SafeMarkdown({ content }: SafeMarkdownProps) {
               <li className="ml-4" {...props} />
             ),
             // Add proper paragraph spacing
-            p: ({ ...props }) => (
-              <p className="my-4 leading-relaxed" {...props} />
-            ),
+            p: ({ children, ...props }) => {
+              // Check if the children is a React element (like an image) to prevent nesting errors
+              if (React.isValidElement(children)) {
+                return children;
+              }
+              return <p className="my-4 leading-relaxed" {...props}>{children}</p>;
+            },
           }}
         >
           {cleanContent}
