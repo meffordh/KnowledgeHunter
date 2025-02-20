@@ -5,9 +5,8 @@ import { Progress } from "@/components/ui/progress";
 import { ResearchProgress, StreamingResearchUpdateType, ResearchFindingType, ResearchMediaUpdateType, ResearchSourceAnalysisType } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { StreamingResearchProgress } from "@/components/StreamingResearchProgress";
 import { useResearch } from "@/hooks/use-research";
-import {Badge} from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 
 interface ResearchProgressDisplayProps {
   className?: string;
@@ -100,113 +99,92 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
     );
   };
 
-  const renderStreamingContent = (update: StreamingResearchUpdateType & { id: string }) => {
-    switch (update.type) {
-      case 'FINDING':
-        const findingData = update.data.content;
-        return (
-          <Card key={update.id} className="mb-4">
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <Badge variant="default">{update.data.type}</Badge>
-                <span className="text-sm text-muted-foreground">
-                  {new Date(update.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-              {typeof findingData === 'string' ? (
-                <p className="text-sm">{findingData}</p>
-              ) : (
-                <div className="text-sm">
-                  <h4 className="font-medium">{findingData.title}</h4>
-                  <a href={findingData.url} target="_blank" rel="noopener noreferrer" 
-                     className="text-blue-500 hover:underline">
-                    View Source
-                  </a>
-                  {findingData.media_analysis && (
-                    <p className="mt-2 text-muted-foreground">{findingData.media_analysis}</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      case 'MEDIA':
-        return (
-          <Card key={update.id} className="mb-4">
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <Badge variant="default">{update.data.media.type}</Badge>
-                <span className="text-sm text-muted-foreground">
-                  {new Date(update.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-              {update.data.media.type === 'image' ? (
-                <div className="mt-2">
+  const renderFinding = (finding: ResearchFindingType, timestamp: string, id: string) => (
+    <Card key={id} className="mb-4">
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <Badge variant="default">{finding.type}</Badge>
+          <span className="text-sm text-muted-foreground">
+            {new Date(timestamp).toLocaleTimeString()}
+          </span>
+        </div>
+        <SafeMarkdown content={finding.content} />
+      </CardContent>
+    </Card>
+  );
+
+  const renderMedia = (media: ResearchMediaUpdateType, timestamp: string, id: string) => (
+    <Card key={id} className="mb-4">
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <Badge variant="default">{media.media.type}</Badge>
+          <span className="text-sm text-muted-foreground">
+            {new Date(timestamp).toLocaleTimeString()}
+          </span>
+        </div>
+        {media.media.type === 'image' ? (
+          <div className="mt-2">
+            <img 
+              src={media.media.url} 
+              alt={media.media.description || 'Research media'} 
+              className="w-full h-auto rounded-md"
+            />
+            {media.media.description && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {media.media.description}
+              </p>
+            )}
+          </div>
+        ) : media.media.type === 'video' ? (
+          <div className="mt-2">
+            {media.media.embedCode ? (
+              <div 
+                className="aspect-video"
+                dangerouslySetInnerHTML={{ __html: media.media.embedCode }} 
+              />
+            ) : (
+              <div className="aspect-video bg-muted rounded-md flex items-center justify-center">
+                <a 
+                  href={media.media.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex flex-col items-center text-muted-foreground hover:text-primary"
+                >
                   <img 
-                    src={update.data.media.url} 
-                    alt={update.data.media.description || 'Research media'} 
+                    src={`https://img.youtube.com/vi/${media.media.url.split('v=')[1]}/0.jpg`}
+                    alt="Video thumbnail"
                     className="w-full h-auto rounded-md"
                   />
-                  {update.data.media.description && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {update.data.media.description}
-                    </p>
-                  )}
-                </div>
-              ) : update.data.media.type === 'video' ? (
-                <div className="mt-2">
-                  {update.data.media.embedCode ? (
-                    <div 
-                      className="aspect-video"
-                      dangerouslySetInnerHTML={{ __html: update.data.media.embedCode }} 
-                    />
-                  ) : (
-                    <div className="aspect-video bg-muted rounded-md flex items-center justify-center">
-                      <a 
-                        href={update.data.media.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex flex-col items-center text-muted-foreground hover:text-primary"
-                      >
-                        <img 
-                          src={`https://img.youtube.com/vi/${update.data.media.url.split('v=')[1]}/0.jpg`}
-                          alt="Video thumbnail"
-                          className="w-full h-auto rounded-md"
-                        />
-                        <span className="mt-2">Watch on YouTube</span>
-                      </a>
-                    </div>
-                  )}
-                  {update.data.media.description && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {update.data.media.description}
-                    </p>
-                  )}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        );
-      case 'SOURCE':
-        return (
-          <Card key={update.id} className="mb-4">
-            <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <Badge>{update.data.contentType}</Badge>
-                <Progress value={update.data.credibilityScore * 100} className="w-20" />
+                  <span className="mt-2">Watch on YouTube</span>
+                </a>
               </div>
-              <h3 className="font-medium mb-1">{update.data.title || 'Untitled Source'}</h3>
-              <a href={update.data.url} target="_blank" rel="noopener noreferrer" 
-                 className="text-sm text-blue-500 hover:underline">
-                View Source
-              </a>
-            </CardContent>
-          </Card>
-        );
-      default:
-        return null;
-    }
-  };
+            )}
+            {media.media.description && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {media.media.description}
+              </p>
+            )}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+
+  const renderSource = (source: ResearchSourceAnalysisType, timestamp: string, id: string) => (
+    <Card key={id} className="mb-4">
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <Badge>{source.contentType}</Badge>
+          <Progress value={source.credibilityScore * 100} className="w-20" />
+        </div>
+        <h3 className="font-medium mb-1">{source.title || 'Untitled Source'}</h3>
+        <a href={source.url} target="_blank" rel="noopener noreferrer" 
+           className="text-sm text-blue-500 hover:underline">
+          View Source
+        </a>
+      </CardContent>
+    </Card>
+  );
 
   // Group updates by type
   const findingUpdates = updates.filter(u => u.type === 'FINDING');
@@ -225,7 +203,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
 
           {/* Show the report when completed */}
           {progress?.status === 'COMPLETED' && progress.report && (
-            <div className="mt-6 prose prose-sm max-w-none">
+            <div className="mt-6">
               <SafeMarkdown content={progress.report} />
             </div>
           )}
@@ -241,7 +219,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {sourceUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Sources</h4>
-              {sourceUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
+              {sourceUpdates.map(update => renderSource(update.data as ResearchSourceAnalysisType, update.timestamp, update.id!))}
             </div>
           )}
 
@@ -249,7 +227,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {findingUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Findings</h4>
-              {findingUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
+              {findingUpdates.map(update => renderFinding(update.data as ResearchFindingType, update.timestamp, update.id!))}
             </div>
           )}
 
@@ -257,7 +235,7 @@ export function ResearchProgressDisplay({ className }: ResearchProgressDisplayPr
           {mediaUpdates.length > 0 && (
             <div className="mb-6">
               <h4 className="text-md font-medium mb-3">Media</h4>
-              {mediaUpdates.map(update => renderStreamingContent(update as StreamingResearchUpdateType & { id: string }))}
+              {mediaUpdates.map(update => renderMedia(update.data as ResearchMediaUpdateType, update.timestamp, update.id!))}
             </div>
           )}
         </div>
