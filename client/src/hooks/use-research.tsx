@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useState, useEffect } from 'react';
+import { createContext, useContext, useCallback, useState } from 'react';
 import { Research, ResearchProgress, StreamingResearchUpdateType } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -24,15 +24,6 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
   const { session } = useClerk();
   const [, setLocation] = useLocation();
 
-  // Cleanup WebSocket on unmount
-  useEffect(() => {
-    return () => {
-      if (socket) {
-        socket.close();
-      }
-    };
-  }, [socket]);
-
   const startResearch = useCallback(async (research: Research) => {
     if (!user) {
       toast({
@@ -44,38 +35,36 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Close any existing socket connection and clean up state
+    if (socket) {
+      console.log('Closing existing WebSocket connection');
+      socket.close();
+      setSocket(null);
+    }
+
+    // Reset state at the start of new research
+    setProgress(null);
+    setStreamingUpdate(null);
+    setIsResearching(false);
+
     try {
-      // Get authentication token
       const token = await session?.getToken();
       if (!token) {
         throw new Error('Failed to get authentication token');
       }
 
-      // Close any existing socket connection
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-
-      // Reset state
-      setProgress(null);
-      setStreamingUpdate(null);
-      setIsResearching(false);
-      setSocket(null);
-
-      // Construct WebSocket URL
+      // Get the window location and construct WebSocket URL
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.host;
       const wsUrl = `${wsProtocol}//${wsHost}/ws`;
 
       console.log('Connecting to WebSocket URL:', wsUrl);
 
-      // Create new WebSocket connection
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
         console.log('WebSocket connection established');
         setIsResearching(true);
-        setSocket(ws);
 
         // Send research request with auth token
         const message = {
@@ -83,6 +72,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           ...research,
           userId: user.id
         };
+        console.log('Sending research request:', message);
         ws.send(JSON.stringify(message));
       };
 
@@ -91,9 +81,11 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           const data = JSON.parse(event.data);
           console.log('Received WebSocket message:', data);
 
+          // Handle streaming updates
           if (data.type && data.data) {
             setStreamingUpdate(data);
 
+            // If it's a progress update, also update the progress state
             if (data.type === 'PROGRESS') {
               setProgress(data.data);
 
@@ -104,6 +96,7 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
               }
             }
           } else {
+            // Handle legacy progress updates
             setProgress(data);
 
             if (data.status === 'ERROR') {
@@ -130,16 +123,13 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           variant: 'destructive',
         });
         setIsResearching(false);
-        setSocket(null);
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = () => {
         console.log('WebSocket connection closed', {
           isResearching,
           hasProgress: Boolean(progress),
-          progressStatus: progress?.status,
-          code: event.code,
-          reason: event.reason
+          progressStatus: progress?.status
         });
 
         if (isResearching && (!progress || progress.status !== 'COMPLETED')) {
@@ -150,15 +140,14 @@ export function ResearchProvider({ children }: { children: React.ReactNode }) {
           });
           setIsResearching(false);
         }
-        setSocket(null);
       };
 
+      setSocket(ws);
     } catch (error) {
       console.error('Error setting up WebSocket:', error);
       handleError(error instanceof Error ? error.message : 'Unknown error');
-      setSocket(null);
     }
-  }, [socket, isResearching, user, session, setLocation, toast, progress]);
+  }, [toast, socket, isResearching, user, session, setLocation]);
 
   const handleError = (errorMessage: string) => {
     if (errorMessage?.toLowerCase().includes('authentication') || 
